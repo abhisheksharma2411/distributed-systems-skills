@@ -29,6 +29,16 @@ Every skill in this pack meets four conditions. A proposal that misses any of th
 
 The format is deliberately compatible with [`addyosmani/agent-skills`](https://github.com/addyosmani/agent-skills), so a skill here can be submitted upstream without restructuring.
 
+## Validating locally
+
+Before opening a pull request, run the validator:
+
+```bash
+node scripts/validate-skills.js
+```
+
+It needs nothing beyond Node itself and checks the frontmatter, the section anatomy, the eval-case minimums above, that every `files[]` entry resolves to a real fixture directory, and that every `` `skill-name` `` cross-reference in a SKILL.md resolves to a skill that exists. It exits non-zero on any error; warnings are reported but do not fail the run unless you pass `--strict`.
+
 ## Cross-references
 
 Skills point at each other rather than restating. If two skills need the same material, one owns it and the other links. Do not introduce a cross-reference to a skill that does not exist yet — mark it as planned in the README instead.
