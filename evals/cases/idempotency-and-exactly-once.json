@@ -1,0 +1,68 @@
+{
+  "skill_name": "idempotency-and-exactly-once",
+  "trigger": {
+    "positive": [
+      {
+        "prompt": "Add retry logic to our payment provider call",
+        "top_k": 3
+      },
+      {
+        "prompt": "Customers are reporting they got charged twice for one order",
+        "top_k": 3
+      },
+      {
+        "prompt": "Write a Kafka consumer that decrements inventory when an order is placed",
+        "top_k": 3
+      },
+      {
+        "prompt": "Review this webhook handler that issues refunds",
+        "top_k": 3
+      }
+    ],
+    "negative": [
+      {
+        "prompt": "Add structured logging and metrics to the checkout service",
+        "owner": "observability-and-instrumentation"
+      },
+      {
+        "prompt": "This endpoint is slow, profile it and speed it up",
+        "owner": "performance-optimization"
+      },
+      {
+        "prompt": "Rename these variables to be more descriptive"
+      }
+    ]
+  },
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Add retries to our payout handler so transient provider failures don't lose payouts.",
+      "expected_output": "Retry is made safe with a stable intent-derived idempotency key, an atomic claim via unique constraint, an in_progress state, the key forwarded to the provider, and a reconciliation path for unknown outcomes",
+      "files": [
+        "idempotency-and-exactly-once"
+      ],
+      "expectations": [
+        "Idempotency key is derived from a stable business intent, never uuid4() or a timestamp per attempt",
+        "Dedup claim is atomic (unique constraint / INSERT-first), not a check-then-act sequence",
+        "An in_progress state is handled explicitly rather than only done/not-done",
+        "The same key is forwarded to the external provider where supported",
+        "Unknown outcomes are recorded before the provider call and resolved by reconciliation",
+        "Key retention is at least as long as the longest retry chain including DLQ replay"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Here is our handler: it checks `if not db.exists(key)` then charges the card then inserts the key. Is this correct?",
+      "expected_output": "Identifies the check-then-act TOCTOU race and replaces it with an atomic claim; does not merely add a lock or call it acceptable",
+      "files": [
+        "idempotency-and-exactly-once"
+      ],
+      "expectations": [
+        "Names the race between the existence check and the insert",
+        "Proposes an atomic INSERT that relies on a unique constraint to pick the winner",
+        "Notes that concurrent duplicates, not just sequential retries, are the failure mode",
+        "Requires a test that fails if the idempotency logic is removed"
+      ]
+    }
+  ]
+}
