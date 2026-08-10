@@ -8,13 +8,32 @@ Most agent skill packs cover the development lifecycle — testing, review, refa
 
 ## Skills
 
+**Core correctness**
+
 | Skill | Covers | Status |
 |---|---|---|
 | [`idempotency-and-exactly-once`](skills/idempotency-and-exactly-once/SKILL.md) | Retry-safe side effects, dedup stores, atomic claims, reconciliation | ✅ Ready |
-| `failure-mode-analysis` | Enumerating partial failures before writing the happy path; blast radius; graceful degradation | 🚧 Planned |
-| `distributed-data-consistency` | Sagas, outbox pattern, compensations, read-after-write, dual-write elimination | 🚧 Planned |
-| `resilience-patterns` | Timeouts, backoff, jitter, circuit breakers, bulkheads, backpressure, load shedding | 🚧 Planned |
-| `money-movement-correctness` | Ledger invariants, double-entry, settlement windows, dispute handling, audit trails | 🚧 Planned |
+| `failure-mode-analysis` | Enumerating partial failures before writing the happy path; blast radius; graceful degradation | 🚧 [#1](../../issues/1) |
+| `resilience-patterns` | Timeouts, backoff, jitter, circuit breakers, bulkheads, backpressure, load shedding | 🚧 [#2](../../issues/2) |
+| `distributed-data-consistency` | Sagas, outbox pattern, compensations, read-after-write, dual-write elimination | 🚧 [#3](../../issues/3) |
+| `money-movement-correctness` | Ledger invariants, double-entry, settlement windows, dispute handling, audit trails | 🚧 [#4](../../issues/4) |
+
+**Coordination and flow**
+
+| Skill | Covers | Status |
+|---|---|---|
+| `distributed-locking-and-leases` | Fencing tokens, lease revalidation, CAS over object storage, backend capability checks | 🚧 [#11](../../issues/11) |
+| `queue-semantics-and-replay` | Delivery guarantees, ack placement, ordering, poison messages, DLQ replay safety | 🚧 [#12](../../issues/12) |
+| `rate-limiting-and-quota-correctness` | Shared counters, algorithm choice, fail-open vs fail-closed, quota vs throughput | 🚧 [#15](../../issues/15) |
+
+**Change and state**
+
+| Skill | Covers | Status |
+|---|---|---|
+| `data-migration-and-backfill` | Expand/migrate/contract, resumable backfills, verification before contraction | 🚧 [#13](../../issues/13) |
+| `caching-and-staleness` | Staleness budgets, invalidation, stampede protection, what must never be cached | 🚧 [#14](../../issues/14) |
+
+See [#16](../../issues/16) for the full roadmap, what is deliberately out of scope, and candidates still under consideration.
 
 ## Design principles
 
