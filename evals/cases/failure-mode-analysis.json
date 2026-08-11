@@ -1,0 +1,44 @@
+{
+  "skill_name": "failure-mode-analysis",
+  "trigger": {
+    "positive": [
+      { "prompt": "I'm designing a checkout flow that calls inventory, payments, and email", "top_k": 3 },
+      { "prompt": "Write an ADR for the new order service", "top_k": 3 },
+      { "prompt": "What happens if the payment provider times out halfway through?", "top_k": 3 },
+      { "prompt": "Review this handler that calls a third-party API", "top_k": 3 }
+    ],
+    "negative": [
+      { "prompt": "Our checkout is charging some customers twice, fix it", "owner": "idempotency-and-exactly-once" },
+      { "prompt": "Add structured logging and metrics to the checkout service", "owner": "observability-and-instrumentation" },
+      { "prompt": "Rename these variables to be more descriptive" }
+    ]
+  },
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Design the checkout flow in checkout.py. It needs to reserve inventory, charge the customer, write the order, and send a confirmation email.",
+      "expected_output": "Boundaries enumerated, a three-outcome table per boundary with no empty unknown cell, blast radius classified, a degradation ladder with measurable triggers, and an injection plan",
+      "files": ["failure-mode-analysis"],
+      "expectations": [
+        "Every external boundary is listed before any happy-path code is written",
+        "Each boundary gets success / failure / unknown, with the unknown cell filled in",
+        "The unknown outcome for the payment call resolves to safe-to-repeat, detectable, or impossible — not 'retry'",
+        "The gap between charging the customer and writing the order is identified as a corrupting failure",
+        "Degradation transitions are tied to metrics and thresholds, not human judgement",
+        "Each specified behaviour names how the failure will be injected in a test"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "This function calls the shipping API with a 60 second timeout and retries three times. Our own API gateway times out at 30 seconds. Anything wrong?",
+      "expected_output": "Identifies that the downstream timeout budget exceeds the caller's, so the retries are wasted work the caller never sees, and questions whether the operation is safe to retry at all",
+      "files": ["failure-mode-analysis"],
+      "expectations": [
+        "Notes the downstream timeout exceeds the caller's, so retries complete after the caller has given up",
+        "Asks whether the shipping call is idempotent before accepting the retry",
+        "Identifies the shared-resource blast radius of holding connections for 60 seconds",
+        "Does not simply suggest lowering the number without addressing the budget relationship"
+      ]
+    }
+  ]
+}
