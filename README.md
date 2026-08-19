@@ -44,6 +44,14 @@ Each skill follows the same contract:
 - **Rationalization-aware.** Each skill names the excuses used to skip it, with rebuttals. Agents and engineers reach for the same ones.
 - **Cross-referenced, not duplicated.** Skills point at each other rather than restating.
 
+## References
+
+Some material is worth carrying into a review on its own, separately from the skill that explains it. Those artifacts live under [`references/`](references/):
+
+| Reference | From | Use it for |
+|---|---|---|
+| [Idempotency review checklist](references/idempotency-checklist.md) | [`idempotency-and-exactly-once`](skills/idempotency-and-exactly-once/SKILL.md) | A pre-merge gate for any change with a retryable side effect. Paste into a PR description or review comment. |
+
 ## Installation
 
 Copy the skill directory into your agent's skills path:
