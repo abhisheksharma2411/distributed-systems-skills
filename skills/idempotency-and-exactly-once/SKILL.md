@@ -180,14 +180,6 @@ Keys cannot live forever, and the retention window is a correctness parameter, n
 
 ## Verification
 
-A change is not done until each of these is demonstrated, not asserted:
-
-1. **Replay test** — invoke the handler twice with the same key concurrently; assert exactly one effect and identical responses
-2. **Crash test** — kill the process between effect and outcome-write; on restart, assert no second effect
-3. **Divergence test** — same key, different payload; assert a loud error, not a stale cached response
-4. **Concurrency test** — N parallel calls with one key; assert one winner, N-1 conflicts, zero extra effects
-5. **Constraint check** — confirm the unique index exists in the migration, not just the model
-6. **Retention check** — key TTL ≥ longest retry chain, including DLQ replay and dispute windows
-7. **Observability check** — `duplicate_suppressed_total`, `unknown_state_total`, and `oldest_unreconciled_age` are emitted and alertable
+A change is not done until every item in the [idempotency review checklist](../../references/idempotency-checklist.md) is demonstrated, not asserted — replay, crash, divergence, concurrency, constraint, retention, and observability, each answered yes with evidence.
 
 If you cannot point at a test that fails when the idempotency logic is removed, the logic is undefended and will be refactored away.
