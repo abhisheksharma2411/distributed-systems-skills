@@ -53,15 +53,33 @@ function listSkillDirs() {
     .sort();
 }
 
-// Skills marked as planned in the README roster tables (`name` in a | row).
+// Skills listed in the README roster: the FIRST COLUMN of table rows under the
+// `## Skills` heading.
+//
+// Scoped rather than reading every backticked token in every table row. The
+// roster is not the only table in the README — `references/` is another, and its
+// rows name skills in the second column and artifacts in the first. Harvesting
+// those made `idempotency-checklist` a "planned skill", so any skill body that
+// backticked it would have errored with "cross-reference to planned skill" about
+// a file that exists and is not a skill. That is not hypothetical: it turned up
+// while the references table was being written, and was dodged by un-backticking
+// the link text — a README bending around a validator heuristic.
 function plannedSkills() {
   const planned = new Set();
   if (!fs.existsSync(README)) return planned;
+  let inRoster = false;
   for (const line of fs.readFileSync(README, 'utf8').split('\n')) {
-    if (!line.trimStart().startsWith('|')) continue;
-    for (const m of line.matchAll(/`([a-z0-9-]+)`/g)) {
-      if (KEBAB.test(m[1])) planned.add(m[1]);
+    const heading = line.match(/^## (.+)$/);
+    if (heading) {
+      inRoster = heading[1].trim() === 'Skills';
+      continue;
     }
+    if (!inRoster || !line.trimStart().startsWith('|')) continue;
+    // `| cell | cell |` splits to ['', ' cell ', ' cell ', ''] — [1] is the first.
+    const firstCell = line.split('|')[1];
+    if (firstCell === undefined) continue;
+    const m = firstCell.match(/`([a-z0-9-]+)`/);
+    if (m && KEBAB.test(m[1])) planned.add(m[1]);
   }
   return planned;
 }
@@ -130,7 +148,9 @@ function checkSkill(name, existing, planned) {
     }
     if (fm.description !== undefined) {
       const firstWord = fm.description.split(/\s+/)[0] || '';
-      if (!/^[A-Z][a-z]+s$/.test(firstWord)) {
+      // Hyphens allowed: "Cross-checks" is third person too, and rejecting it
+      // pushed descriptions toward worse wording to satisfy the pattern.
+      if (!/^[A-Z][A-Za-z]*(?:-[A-Za-z]+)*s$/.test(firstWord)) {
         error(file, `description must start in third person (e.g. "Designs", "Reviews"), found: "${firstWord}"`);
       }
       if (!/\bUse when\b/.test(fm.description)) {
@@ -150,7 +170,17 @@ function checkSkill(name, existing, planned) {
   }
 
   // -- cross-references ---------------------------------------------------
-  // Backticked kebab-case tokens are treated as potential skill references.
+  // Only the rule CONTRIBUTING actually states: do not cross-reference a skill
+  // that is on the roster but not written yet.
+  //
+  // A backticked kebab token that names no roster skill is left alone. In a
+  // distributed-systems pack that vocabulary IS the subject matter — one true
+  // sentence about `at-least-once` delivery, a `write-ahead` log and a
+  // `dead-letter` queue produced three warnings, and `exactly-once`,
+  // `read-after-write`, `dual-write` and `circuit-breaker` behave the same way.
+  // With this wired into CI under --strict they would be build failures, and the
+  // fix a contributor reaches for is to un-backtick correct technical terms.
+  // Unknown tokens are prose, upstream skills, or terms of art; none is an error.
   const body = stripFencedCode(content.slice(content.indexOf('\n---') + 4));
   const seen = new Set();
   for (const m of body.matchAll(/`([a-z0-9-]+)`/g)) {
@@ -160,8 +190,6 @@ function checkSkill(name, existing, planned) {
     if (existing.has(ref)) continue;
     if (planned.has(ref)) {
       error(file, `cross-reference to planned skill \`${ref}\` — CONTRIBUTING: do not cross-reference a skill that does not exist yet`);
-    } else {
-      warn(file, `\`${ref}\` looks like a skill cross-reference but no such skill exists in skills/ — if it names a skill, drop the reference or mark it planned in the README`);
     }
   }
 }
