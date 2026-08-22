@@ -109,15 +109,38 @@ function parseFrontmatter(content, file) {
   return fields;
 }
 
+// Remove fenced code blocks so their contents are not read as prose.
+//
+// Tracks which marker opened the block and how long it was, per CommonMark: a
+// fence closes only on the SAME character, repeated at least as many times.
+// Toggling on any fence-looking line instead desynchronises the moment a block
+// contains the other marker — and a ``` line inside a ~~~ example is an ordinary
+// thing to write in a repository of skills about writing markdown. The
+// consequence was that everything after such a block counted as fenced, so the
+// planned-skill cross-reference rule stopped applying for the rest of the file
+// while the run stayed green. A false negative, which is the direction nobody
+// notices. See issue #19 for the three reproductions.
+//
+// An unterminated fence swallows the remainder of the file. That is deliberate:
+// the alternative is guessing where the author meant it to close, and reading
+// too much as code only ever costs a missed cross-reference, never a false one.
 function stripFencedCode(body) {
   const out = [];
-  let inFence = false;
+  /** @type {{ marker: string, length: number } | null} */
+  let fence = null;
   for (const line of body.split('\n')) {
-    if (/^\s*(```|~~~)/.test(line)) {
-      inFence = !inFence;
+    const opener = line.match(/^\s*(`{3,}|~{3,})/);
+    if (fence) {
+      if (opener && opener[1][0] === fence.marker && opener[1].length >= fence.length) {
+        fence = null;
+      }
       continue;
     }
-    if (!inFence) out.push(line);
+    if (opener) {
+      fence = { marker: opener[1][0], length: opener[1].length };
+      continue;
+    }
+    out.push(line);
   }
   return out.join('\n');
 }
