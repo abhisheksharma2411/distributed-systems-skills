@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate skills
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Oldest supported LTS and current, so a syntax or API assumption that
+        # only holds on one of them is caught here rather than by a contributor.
+        node: ["20", "22", "24"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+
+      - name: Unit tests
+        # Run before the validator: these cover the pure helpers directly, and the
+        # fence bugs they pin were false *negatives* — the validator stayed green
+        # while silently skipping the rest of a file, so a passing run below is
+        # only meaningful once these hold.
+        run: node --test scripts/validate-skills-test.js
+
+      - name: Validate skills (strict)
+        # --strict promotes warnings to failures. The pack is warning-free today
+        # and keeping it that way is cheaper than triaging a backlog later.
+        run: node scripts/validate-skills.js --strict
+
+  links:
+    name: Check relative links resolve
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Every relative markdown link points at a file that exists
+        # A dead link in a skills pack is a silent failure: the agent reading it
+        # simply does not get the reference, with nothing to report.
+        run: node scripts/check-links.js
