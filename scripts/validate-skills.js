@@ -309,4 +309,12 @@ function main() {
   console.log(summary);
 }
 
-main();
+// Run only as a CLI. Required as a module (by the test suite) this exports the pure
+// helpers instead, so `stripFencedCode` can be exercised directly rather than inferred
+// from validator output — the fence bugs in #19 were all false *negatives*, which a
+// pass/fail check on the whole run cannot see.
+if (require.main === module) {
+  main();
+} else {
+  module.exports = { stripFencedCode, parseFrontmatter };
+}
