@@ -1,5 +1,7 @@
 # Distributed Systems Skills
 
+[![CI](https://github.com/abhisheksharma2411/distributed-systems-skills/actions/workflows/ci.yml/badge.svg)](https://github.com/abhisheksharma2411/distributed-systems-skills/actions/workflows/ci.yml)
+
 Agent skills for the correctness problems that only show up in production: retries that double-charge, replays that drift a ledger, partial failures that leave two systems disagreeing.
 
 Most agent skill packs cover the development lifecycle — testing, review, refactoring, docs. This one covers the part that gets discovered by finance three months later.
