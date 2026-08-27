@@ -10,6 +10,8 @@
 //   eval cases       - a case file per skill, trigger/eval minimums, fixture
 //                      directories that exist
 //   cross-references - every `skill-name` reference in a SKILL.md resolves
+//   routing          - descriptions distinct enough to route, and no two eval
+//                      cases contradicting each other about who owns a prompt
 //
 // Exit code: 1 if any error (or any warning with --strict), 0 otherwise.
 
@@ -152,17 +154,171 @@ function stripFencedCode(body) {
   return out.join('\n');
 }
 
+// -- routing --------------------------------------------------------------
+//
+// Routing failures are the dominant real-world skill bug, and they are quiet:
+// nothing errors, the wrong skill just answers. Two flavours, per issue #9 — a
+// description missing the vocabulary users actually type (false negative), and
+// an over-broad description outranking the right skill (false positive). With
+// two skills there is nothing to collide with; the collisions arrive around
+// five, which is when nobody is looking for them any more.
+
+// Words carrying no routing signal: ordinary grammar, plus the `Use when` and
+// `NOT for` scaffolding every description in this pack shares by construction.
+// Leaving those in floats every pair's score by roughly a constant, which
+// narrows the gap the threshold has to sit in.
+const STOP_WORDS = new Set(
+  `a an the and or of to for in on at is are be been being use used when where
+   not with that this it its as by from into over under after before if then
+   than so do does doing what which who whom whose how why can could should
+   would may might must will shall you your we our they their he she his her
+   them us me my but also about`.split(/\s+/).filter(Boolean)
+);
+
+/** Content words of a description, for overlap comparison. */
+function descriptionTokens(text) {
+  return new Set(
+    String(text)
+      .toLowerCase()
+      .replace(/[^a-z0-9\s-]/g, ' ')
+      .split(/\s+/)
+      .filter((w) => w.length > 2 && !STOP_WORDS.has(w))
+  );
+}
+
+/** Jaccard overlap of two descriptions: 0 shares nothing, 1 is identical. */
+function similarity(a, b) {
+  const A = descriptionTokens(a);
+  const B = descriptionTokens(b);
+  if (A.size === 0 || B.size === 0) return 0;
+  let shared = 0;
+  for (const w of A) if (B.has(w)) shared++;
+  return shared / (A.size + B.size - shared);
+}
+
+// Measured on this pack rather than picked, because a threshold nobody can
+// justify gets raised the first time it fires:
+//
+//   failure-mode-analysis vs idempotency-and-exactly-once   0.10  distinct
+//   failure-mode-analysis vs a drafted resilience-patterns  0.08  sibling domain
+//   failure-mode-analysis vs a deliberately over-broad one  0.48  the bug
+//   failure-mode-analysis vs itself, lightly reworded       0.88  duplicate
+//
+// 0.35 sits in the gap — three times the widest legitimate overlap, and clear
+// of the over-broad case. The test suite pins all four numbers, so a change to
+// the tokeniser that quietly moves them fails there rather than here.
+const COLLISION_THRESHOLD = 0.35;
+
+// Returns findings rather than recording them, so the rule can be exercised
+// directly on a table of descriptions. Inferring it from validator output would
+// only ever prove the green case, and a collision check that cannot fire is the
+// same as no collision check.
+function findDescriptionCollisions(descriptions) {
+  const found = [];
+  const names = Object.keys(descriptions).sort();
+  for (let i = 0; i < names.length; i++) {
+    for (let j = i + 1; j < names.length; j++) {
+      const score = similarity(descriptions[names[i]], descriptions[names[j]]);
+      if (score < COLLISION_THRESHOLD) continue;
+      found.push({
+        skill: names[i],
+        other: names[j],
+        score,
+        message:
+          'description overlaps `' + names[j] + '` at ' + score.toFixed(2) +
+            ' (limit ' + COLLISION_THRESHOLD + '). Two descriptions this close cannot route ' +
+          'reliably — whichever happens to rank higher takes prompts belonging to the ' +
+          'other, and nothing errors when it does. Narrow both, and give each a NOT ' +
+          'clause naming the other.',
+      });
+    }
+  }
+  return found;
+}
+
+/** Compare prompts on words alone: punctuation and case are not routing signal. */
+function normalizePrompt(prompt) {
+  return String(prompt)
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+// A negative trigger carrying an `owner` is a claim about where a prompt
+// routes. Two cases can make contradictory claims, and the contradiction is
+// invisible in either file on its own — which is the whole reason to check it
+// across the set rather than per file.
+function findTriggerConflicts(cases) {
+  const found = [];
+  const positives = new Map(); // prompt -> [skill]
+  const negatives = new Map(); // prompt -> [{ skill, owner }]
+
+  for (const name of Object.keys(cases).sort()) {
+    const trigger = cases[name].trigger || {};
+    for (const t of Array.isArray(trigger.positive) ? trigger.positive : []) {
+      if (!t || typeof t.prompt !== 'string') continue;
+      const key = normalizePrompt(t.prompt);
+      if (!positives.has(key)) positives.set(key, []);
+      positives.get(key).push(name);
+    }
+    for (const t of Array.isArray(trigger.negative) ? trigger.negative : []) {
+      if (!t || typeof t.prompt !== 'string') continue;
+      const key = normalizePrompt(t.prompt);
+      if (!negatives.has(key)) negatives.set(key, []);
+      negatives.get(key).push({ skill: name, owner: t.owner });
+    }
+  }
+
+  for (const [prompt, claimants] of positives) {
+    if (claimants.length < 2) continue;
+    found.push({
+      skill: claimants[0],
+      message:
+        'positive trigger "' + prompt + '" is also a positive trigger for `' +
+        claimants.slice(1).join('`, `') + '`. Both cannot rank first, so one case is ' +
+        'asserting a routing result the other contradicts. Give the prompt to whichever ' +
+        'skill should win it, and make it a negative trigger of the others.',
+    });
+  }
+
+  for (const [prompt, claims] of negatives) {
+    const claimants = positives.get(prompt) || [];
+    for (const claim of claims) {
+      if (claimants.includes(claim.skill)) {
+        found.push({
+          skill: claim.skill,
+          message: '"' + prompt + '" is listed as both a positive and a negative trigger',
+        });
+      }
+      if (typeof claim.owner !== 'string') continue;
+      for (const claimant of claimants) {
+        if (claimant === claim.owner) continue;
+        found.push({
+          skill: claim.skill,
+          message:
+            'negative trigger "' + prompt + '" names `' + claim.owner + '` as its owner, ' +
+            'but `' + claimant + '` claims the same prompt as a positive trigger. One of ' +
+            'the two cases is wrong about where this prompt routes.',
+        });
+      }
+    }
+  }
+  return found;
+}
+
 function checkSkill(name, existing, planned) {
   const file = rel(path.join(SKILLS_DIR, name, 'SKILL.md'));
   const abs = path.join(SKILLS_DIR, name, 'SKILL.md');
   if (!fs.existsSync(abs)) {
     error(file, 'SKILL.md is missing');
-    return;
+    return null;
   }
   const content = fs.readFileSync(abs, 'utf8');
 
   // -- frontmatter --------------------------------------------------------
   const fm = parseFrontmatter(content, file);
+  const description = fm && typeof fm.description === 'string' ? fm.description : null;
   if (fm) {
     const keys = Object.keys(fm).sort();
     if (keys.join(',') !== 'description,name') {
@@ -222,6 +378,8 @@ function checkSkill(name, existing, planned) {
       error(file, `cross-reference to planned skill \`${ref}\` — CONTRIBUTING: do not cross-reference a skill that does not exist yet`);
     }
   }
+
+  return description;
 }
 
 function checkEvalCase(name) {
@@ -229,14 +387,14 @@ function checkEvalCase(name) {
   const file = rel(abs);
   if (!fs.existsSync(abs)) {
     error(file, `missing eval case for skill \`${name}\``);
-    return;
+    return null;
   }
   let data;
   try {
     data = JSON.parse(fs.readFileSync(abs, 'utf8'));
   } catch (e) {
     error(file, `does not parse as JSON: ${e.message}`);
-    return;
+    return null;
   }
 
   if (data.skill_name !== name) {
@@ -250,6 +408,34 @@ function checkEvalCase(name) {
   }
   if (negative.length < 2) {
     error(file, `at least 2 negative triggers required, found ${negative.length}`);
+  }
+
+  // An `owner` is what turns a negative trigger from a vague "not this one" into
+  // a routing assertion: it names the skill that should have won, so an
+  // over-broad description shows up as a regression against a stated expectation
+  // rather than as a complaint nobody can act on. Owners are frequently skills
+  // outside this pack, so existence is not checked — only that the claim is
+  // well-formed and not self-referential.
+  const owned = negative.filter((t) => t && typeof t.owner === 'string' && t.owner.trim() !== '');
+  if (owned.length < 2) {
+    error(
+      file,
+      `at least 2 negative triggers must name an \`owner\`, found ${owned.length}. ` +
+        'Without one, a negative trigger records that this skill lost a prompt but not ' +
+        'who should have won it, which is the half that catches an over-broad description.'
+    );
+  }
+  for (const t of owned) {
+    if (!KEBAB.test(t.owner)) {
+      error(file, `negative trigger owner is not kebab-case: ${t.owner}`);
+    }
+    if (t.owner === name) {
+      error(
+        file,
+        `negative trigger "${t.prompt}" names this skill as its own owner — it cannot ` +
+          'both belong here and be a prompt this skill should lose.'
+      );
+    }
   }
 
   const evals = Array.isArray(data.evals) ? data.evals : [];
@@ -268,6 +454,8 @@ function checkEvalCase(name) {
       }
     }
   }
+
+  return data;
 }
 
 function checkOrphans(skills) {
@@ -292,9 +480,20 @@ function main() {
   const existing = new Set(skills);
   const planned = plannedSkills();
 
+  const descriptions = {};
+  const cases = {};
   for (const name of skills) {
-    checkSkill(name, existing, planned);
-    checkEvalCase(name);
+    const description = checkSkill(name, existing, planned);
+    if (description) descriptions[name] = description;
+    const data = checkEvalCase(name);
+    if (data) cases[name] = data;
+  }
+  // Cross-skill, so they run once over the collected set rather than per skill.
+  for (const f of findDescriptionCollisions(descriptions)) {
+    error(rel(path.join(SKILLS_DIR, f.skill, 'SKILL.md')), f.message);
+  }
+  for (const f of findTriggerConflicts(cases)) {
+    error(rel(path.join(CASES_DIR, f.skill + '.json')), f.message);
   }
   checkOrphans(skills);
 
@@ -316,5 +515,14 @@ function main() {
 if (require.main === module) {
   main();
 } else {
-  module.exports = { stripFencedCode, parseFrontmatter };
+  module.exports = {
+    stripFencedCode,
+    parseFrontmatter,
+    descriptionTokens,
+    similarity,
+    normalizePrompt,
+    findDescriptionCollisions,
+    findTriggerConflicts,
+    COLLISION_THRESHOLD,
+  };
 }
