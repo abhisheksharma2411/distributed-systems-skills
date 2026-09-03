@@ -66,11 +66,13 @@ function listSkillDirs() {
 // a file that exists and is not a skill. That is not hypothetical: it turned up
 // while the references table was being written, and was dodged by un-backticking
 // the link text — a README bending around a validator heuristic.
-function plannedSkills() {
+// `readmePath` is a parameter only so the roster scoping can be exercised
+// against a fixture README; every production caller uses the default.
+function plannedSkills(readmePath = README) {
   const planned = new Set();
-  if (!fs.existsSync(README)) return planned;
+  if (!fs.existsSync(readmePath)) return planned;
   let inRoster = false;
-  for (const line of fs.readFileSync(README, 'utf8').split('\n')) {
+  for (const line of fs.readFileSync(readmePath, 'utf8').split('\n')) {
     const heading = line.match(/^## (.+)$/);
     if (heading) {
       inRoster = heading[1].trim() === 'Skills';
@@ -84,6 +86,38 @@ function plannedSkills() {
     if (m && KEBAB.test(m[1])) planned.add(m[1]);
   }
   return planned;
+}
+
+// Hyphens allowed: "Cross-checks" is third person too, and rejecting it pushed
+// descriptions toward worse wording to satisfy the pattern (#17).
+function isThirdPerson(firstWord) {
+  return /^[A-Z][A-Za-z]*(?:-[A-Za-z]+)*s$/.test(firstWord);
+}
+
+// The cross-reference rule, as the only rule CONTRIBUTING actually states: a
+// backticked kebab token is an error when it names a roster skill that has not
+// been written yet, and is left alone otherwise. Returns the offending refs in
+// source order, deduplicated.
+//
+// There is deliberately no catch-all arm for unknown tokens (#17). In a
+// distributed-systems pack that vocabulary IS the subject matter — one true
+// sentence about `at-least-once` delivery, a `write-ahead` log and a
+// `dead-letter` queue produced three warnings, and `exactly-once`,
+// `read-after-write`, `dual-write` and `circuit-breaker` behave the same way.
+// Wired into CI under --strict those are build failures, and the fix a
+// contributor reaches for is to un-backtick correct technical terms. Unknown
+// tokens are prose, upstream skills, or terms of art; none is an error.
+function plannedCrossReferences(body, selfName, existing, planned) {
+  const found = [];
+  const seen = new Set();
+  for (const m of body.matchAll(/`([a-z0-9-]+)`/g)) {
+    const ref = m[1];
+    if (!KEBAB.test(ref) || ref === selfName || seen.has(ref)) continue;
+    seen.add(ref);
+    if (existing.has(ref)) continue;
+    if (planned.has(ref)) found.push(ref);
+  }
+  return found;
 }
 
 // Minimal frontmatter parser: top-level `key: value` scalars only, which is
@@ -334,9 +368,7 @@ function checkSkill(name, existing, planned) {
     }
     if (fm.description !== undefined) {
       const firstWord = fm.description.split(/\s+/)[0] || '';
-      // Hyphens allowed: "Cross-checks" is third person too, and rejecting it
-      // pushed descriptions toward worse wording to satisfy the pattern.
-      if (!/^[A-Z][A-Za-z]*(?:-[A-Za-z]+)*s$/.test(firstWord)) {
+      if (!isThirdPerson(firstWord)) {
         error(file, `description must start in third person (e.g. "Designs", "Reviews"), found: "${firstWord}"`);
       }
       if (!/\bUse when\b/.test(fm.description)) {
@@ -357,26 +389,11 @@ function checkSkill(name, existing, planned) {
 
   // -- cross-references ---------------------------------------------------
   // Only the rule CONTRIBUTING actually states: do not cross-reference a skill
-  // that is on the roster but not written yet.
-  //
-  // A backticked kebab token that names no roster skill is left alone. In a
-  // distributed-systems pack that vocabulary IS the subject matter — one true
-  // sentence about `at-least-once` delivery, a `write-ahead` log and a
-  // `dead-letter` queue produced three warnings, and `exactly-once`,
-  // `read-after-write`, `dual-write` and `circuit-breaker` behave the same way.
-  // With this wired into CI under --strict they would be build failures, and the
-  // fix a contributor reaches for is to un-backtick correct technical terms.
-  // Unknown tokens are prose, upstream skills, or terms of art; none is an error.
+  // that is on the roster but not written yet. See `plannedCrossReferences`
+  // for why an unknown token is deliberately not reported at all.
   const body = stripFencedCode(content.slice(content.indexOf('\n---') + 4));
-  const seen = new Set();
-  for (const m of body.matchAll(/`([a-z0-9-]+)`/g)) {
-    const ref = m[1];
-    if (!KEBAB.test(ref) || ref === name || seen.has(ref)) continue;
-    seen.add(ref);
-    if (existing.has(ref)) continue;
-    if (planned.has(ref)) {
-      error(file, `cross-reference to planned skill \`${ref}\` — CONTRIBUTING: do not cross-reference a skill that does not exist yet`);
-    }
+  for (const ref of plannedCrossReferences(body, name, existing, planned)) {
+    error(file, `cross-reference to planned skill \`${ref}\` — CONTRIBUTING: do not cross-reference a skill that does not exist yet`);
   }
 
   return description;
@@ -518,6 +535,9 @@ if (require.main === module) {
   module.exports = {
     stripFencedCode,
     parseFrontmatter,
+    plannedSkills,
+    isThirdPerson,
+    plannedCrossReferences,
     descriptionTokens,
     similarity,
     normalizePrompt,
