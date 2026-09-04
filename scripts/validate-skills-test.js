@@ -12,10 +12,16 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
 
 const {
   stripFencedCode,
   parseFrontmatter,
+  plannedSkills,
+  isThirdPerson,
+  plannedCrossReferences,
   descriptionTokens,
   similarity,
   normalizePrompt,
@@ -256,4 +262,179 @@ test('normalizePrompt compares on words alone', () => {
 test('descriptionTokens drops grammar and very short words', () => {
   const tokens = descriptionTokens('The quick, brown fox is not a dog');
   assert.deepEqual([...tokens].sort(), ['brown', 'dog', 'fox', 'quick']);
+});
+
+// -- the #17 helpers --------------------------------------------------------
+//
+// Three of the four changes in #17 were *removals* — the cross-reference
+// catch-all arm dropped, and the roster harvest narrowed. A green run cannot
+// tell a removal that is still in place from one that has been undone, because
+// both look like silence, so each is asserted here against the case that
+// motivated it and against a control that must still fire.
+
+test('a hyphenated verb is third person (#17)', () => {
+  // The reported failure: `Cross-checks` was rejected by /^[A-Z][a-z]+s$/, and
+  // the workaround was to reword the description rather than fix the pattern.
+  assert.equal(isThirdPerson('Cross-checks'), true);
+  assert.equal(isThirdPerson('Read-your-writes'), true);
+  assert.equal(isThirdPerson('Designs'), true);
+  assert.equal(isThirdPerson('Reviews'), true);
+});
+
+test('third person still requires a capital and a trailing s', () => {
+  // The control for the case above: widening the pattern for hyphens is only
+  // correct if it did not stop rejecting what it exists to reject.
+  assert.equal(isThirdPerson('crosschecks'), false);
+  assert.equal(isThirdPerson('cross-checks'), false);
+  assert.equal(isThirdPerson('Cross-check'), false);
+  assert.equal(isThirdPerson('Design'), false);
+  assert.equal(isThirdPerson(''), false);
+});
+
+test('terms of art are not cross-references (#17)', () => {
+  // The sentence that produced three warnings before the catch-all arm was
+  // dropped. In a distributed-systems pack this vocabulary is the subject
+  // matter, and under CI --strict these warnings would have been build
+  // failures whose fix is to un-backtick correct technical terms.
+  const body =
+    'Delivery is `at-least-once`, so a `write-ahead` log and a ' +
+    '`dead-letter` queue are assumed. See also `read-after-write`, ' +
+    '`dual-write` and `circuit-breaker`.';
+  assert.deepEqual(plannedCrossReferences(body, 'some-skill', new Set(), new Set()), []);
+});
+
+test('a genuinely planned skill is still an error', () => {
+  // Non-vacuity for the test above: the rule that survived #17 must still fire,
+  // or "terms of art are silent" would be satisfied by a helper that reports
+  // nothing at all.
+  const body = 'See the `resilience-patterns` skill.';
+  assert.deepEqual(
+    plannedCrossReferences(body, 'some-skill', new Set(), new Set(['resilience-patterns'])),
+    ['resilience-patterns']
+  );
+});
+
+test('a written skill and a self-reference are not planned references', () => {
+  const body = 'See `failure-mode-analysis`, and this is `some-skill` itself.';
+  assert.deepEqual(
+    plannedCrossReferences(
+      body,
+      'some-skill',
+      new Set(['failure-mode-analysis']),
+      new Set(['failure-mode-analysis', 'some-skill'])
+    ),
+    []
+  );
+});
+
+test('a repeated planned reference is reported once', () => {
+  const body = 'First `resilience-patterns`, then `resilience-patterns` again.';
+  assert.deepEqual(
+    plannedCrossReferences(body, 'some-skill', new Set(), new Set(['resilience-patterns'])),
+    ['resilience-patterns']
+  );
+});
+
+/** Write a README fixture and read its roster back. */
+const rosterOf = (readme) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dss-roster-'));
+  try {
+    const file = path.join(dir, 'README.md');
+    fs.writeFileSync(file, readme);
+    return [...plannedSkills(file)].sort();
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+};
+
+test('the roster is the first column of the Skills table (#17)', () => {
+  assert.deepEqual(
+    rosterOf(
+      [
+        '## Skills',
+        '',
+        '| Skill | Status | Covers |',
+        '| --- | --- | --- |',
+        '| `idempotency-and-exactly-once` | ready | `read-after-write` |',
+        '| `resilience-patterns` | planned | `circuit-breaker` |',
+        '',
+      ].join('\n')
+    ),
+    ['idempotency-and-exactly-once', 'resilience-patterns']
+  );
+});
+
+test('a backticked term in a later column is not a planned skill (#17)', () => {
+  // `Covers` spells these out unbackticked today, so backticking one later
+  // would have silently promoted it to a planned skill and turned every body
+  // mentioning it into an error.
+  //
+  // The second row is what gives this test teeth. With a first-column-only
+  // harvest it contributes nothing; with a whole-row harvest it contributes
+  // `read-after-write`. A row whose first cell is *also* backticked cannot
+  // tell the two apart, because a single `line.match` returns the first token
+  // either way — an earlier version of this test used only such a row and
+  // passed under the very regression it was written to catch.
+  const roster = rosterOf(
+    [
+      '## Skills',
+      '',
+      '| Skill | Covers |',
+      '| --- | --- |',
+      '| `resilience-patterns` | `circuit-breaker`, `dual-write` |',
+      '| caching and staleness | `read-after-write` |',
+      '',
+    ].join('\n')
+  );
+  assert.deepEqual(roster, ['resilience-patterns']);
+});
+
+test('a table under another heading is not the roster (#17)', () => {
+  // The live case: the references table links `idempotency-checklist`, a file
+  // that exists and is not a skill. Harvesting it made a correct README into a
+  // validator error, and the README was bent to dodge it.
+  assert.deepEqual(
+    rosterOf(
+      [
+        '## Skills',
+        '',
+        '| Skill | Status |',
+        '| --- | --- |',
+        '| `resilience-patterns` | planned |',
+        '',
+        '## References',
+        '',
+        '| Reference | Purpose |',
+        '| --- | --- |',
+        '| [`idempotency-checklist`](references/idempotency-checklist.md) | review aid |',
+        '',
+      ].join('\n')
+    ),
+    ['resilience-patterns']
+  );
+});
+
+test('a subheading inside the Skills section does not end the roster', () => {
+  // Safe by construction rather than by intent: the literal space in /^## (.+)$/
+  // means a `###` line is not a heading match at all, so `inRoster` survives it.
+  // Pinned because the next edit to that regex could quietly change it.
+  assert.deepEqual(
+    rosterOf(
+      [
+        '## Skills',
+        '',
+        '### Ready',
+        '',
+        '| Skill | Status |',
+        '| --- | --- |',
+        '| `resilience-patterns` | planned |',
+        '',
+      ].join('\n')
+    ),
+    ['resilience-patterns']
+  );
+});
+
+test('a missing README is an empty roster, not a crash', () => {
+  assert.deepEqual([...plannedSkills(path.join(os.tmpdir(), 'dss-no-such-readme.md'))], []);
 });
