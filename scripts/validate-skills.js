@@ -112,6 +112,13 @@ function plannedCrossReferences(body, selfName, existing, planned) {
   const seen = new Set();
   for (const m of body.matchAll(/`([a-z0-9-]+)`/g)) {
     const ref = m[1];
+    // `!KEBAB.test(ref)` here is deliberately unkillable, and is not dead code.
+    // Nothing below pushes except on `planned.has(ref)`, and `plannedSkills`
+    // already KEBAB-filters what goes into that set — so a ref failing KEBAB
+    // could not have been in `planned` anyway, and no test can distinguish this
+    // arm while that filter holds. It is the second line of defence for it:
+    // drop the filter over there and this is what still keeps `caching` out.
+    // Pinned there instead, in "a first cell that is not a skill name".
     if (!KEBAB.test(ref) || ref === selfName || seen.has(ref)) continue;
     seen.add(ref);
     if (existing.has(ref)) continue;

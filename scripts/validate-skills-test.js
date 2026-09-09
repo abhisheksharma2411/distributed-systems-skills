@@ -414,6 +414,38 @@ test('a table under another heading is not the roster (#17)', () => {
   );
 });
 
+test('a first cell that is not a skill name is not harvested (#24 review)', () => {
+  // The fourth change from #17 — the `KEBAB.test` filter on the harvest — was
+  // the one my mutation table missed: dropping it left all 37 tests green.
+  //
+  // It is not inert. The cell pattern /`([a-z0-9-]+)`/ is looser than KEBAB,
+  // which requires at least one internal hyphen, so a one-word entry or a
+  // stray leading hyphen sails straight through without it:
+  //
+  //   with the filter    : []
+  //   with it dropped    : ['caching', '-leading-']
+  //
+  // A one-word roster entry is an ordinary thing to write, and the consequence
+  // is #17's failure mode exactly: `caching` becomes a "planned skill", and
+  // then every SKILL.md body that backticks that very ordinary word is a hard
+  // error under --strict.
+  assert.deepEqual(
+    rosterOf(
+      [
+        '## Skills',
+        '',
+        '| Skill | Status |',
+        '| --- | --- |',
+        '| `caching` | planned |',
+        '| `-leading-` | planned |',
+        '| `resilience-patterns` | planned |',
+        '',
+      ].join('\n')
+    ),
+    ['resilience-patterns']
+  );
+});
+
 test('a subheading inside the Skills section does not end the roster', () => {
   // Safe by construction rather than by intent: the literal space in /^## (.+)$/
   // means a `###` line is not a heading match at all, so `inRoster` survives it.
