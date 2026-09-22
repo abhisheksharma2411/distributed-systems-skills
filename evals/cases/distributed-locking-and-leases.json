@@ -1,0 +1,77 @@
+{
+  "skill_name": "distributed-locking-and-leases",
+  "trigger": {
+    "positive": [
+      {
+        "prompt": "Add a lock so this nightly job can't run on two replicas at once",
+        "top_k": 3
+      },
+      {
+        "prompt": "What TTL should we use for our Redis lock?",
+        "top_k": 3
+      },
+      {
+        "prompt": "Two workers both processed the same batch even though we hold a lock the whole time",
+        "top_k": 3
+      },
+      {
+        "prompt": "Implement leader election across our worker replicas",
+        "top_k": 3
+      },
+      {
+        "prompt": "We need two services to write to the same S3 object without clobbering each other",
+        "top_k": 3
+      }
+    ],
+    "negative": [
+      {
+        "prompt": "Customers are reporting they got charged twice for one order",
+        "owner": "idempotency-and-exactly-once"
+      },
+      {
+        "prompt": "What happens if the payment provider times out halfway through?",
+        "owner": "failure-mode-analysis"
+      },
+      {
+        "prompt": "Add structured logging and metrics to the checkout service",
+        "owner": "observability-and-instrumentation"
+      },
+      {
+        "prompt": "This loop holds a mutex too long, refactor it",
+        "owner": "performance-optimization"
+      }
+    ]
+  },
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Review the nightly rollup job in this fixture. Finance found doubled totals for 31 merchants; the incident note says the lock was held the whole time and the job re-checks ownership before every write. How did both replicas write?",
+      "expected_output": "Identifies that the lease expired under a paused holder and that nothing at the resource could reject the stale writer; proposes a fencing token enforced in the UPDATE, not a longer TTL or a heartbeat",
+      "files": [
+        "distributed-locking-and-leases"
+      ],
+      "expectations": [
+        "Names the 148-second pause exceeding the 120-second lease as the mechanism, and explains that the lock service cannot distinguish a paused holder from a dead one",
+        "Identifies the in-loop `time.time() > lease_expires_at` check as check-then-act that cannot close the window, rather than accepting it as the ownership guard it is presented as",
+        "Requires a fencing token issued by the lock service and evaluated by the resource, so the stale write is rejected by the database rather than by the writer",
+        "Points out that the accumulating `total_cents = total_cents + EXCLUDED` write is not idempotent, so it doubles rather than being overwritten",
+        "Identifies `exists` followed by `set` as a non-atomic acquire that can hand the lock to two callers",
+        "Identifies the unconditional `redis.delete` in `finally` as able to delete a lock the next holder owns",
+        "Does not propose a longer TTL, a heartbeat, or Redlock as the fix, since none of them rejects the stale write",
+        "Notes that the lease was sized from the p99 of the work rather than from an enforced timeout"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "We want a distributed lock for our config publisher. We'll use `SET key val NX PX 30000` and delete the key when we're done. Is that enough?",
+      "expected_output": "Explains that this is a lease without a fence, that the release must be conditional on ownership, and what the resource has to do for the lease to mean anything",
+      "expectations": [
+        "States that the acquire is fine but that mutual exclusion is not what it provides",
+        "Requires the release to be conditional on the stored value matching this holder's token, done atomically",
+        "Requires a monotonic fencing token that the resource compares, and says what to use as one",
+        "Asks what timeout is enforced on the work before accepting 30 seconds as a lease",
+        "Mentions that a conditional write on the config object itself — ETag or generation precondition — may remove the need for a separate lock"
+      ]
+    }
+  ]
+}
