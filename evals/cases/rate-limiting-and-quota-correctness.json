@@ -1,0 +1,77 @@
+{
+  "skill_name": "rate-limiting-and-quota-correctness",
+  "trigger": {
+    "positive": [
+      {
+        "prompt": "Add a per-tenant rate limit to this API",
+        "top_k": 3
+      },
+      {
+        "prompt": "Should we use a token bucket or a sliding window here?",
+        "top_k": 3
+      },
+      {
+        "prompt": "Tenants are going over their monthly spend cap, we need a hard budget limit",
+        "top_k": 3
+      },
+      {
+        "prompt": "What should happen to traffic if Redis is down and we can't check the limit?",
+        "top_k": 3
+      },
+      {
+        "prompt": "Our throttle isn't kicking in until way past the configured limit",
+        "top_k": 3
+      }
+    ],
+    "negative": [
+      {
+        "prompt": "Add a lock so this nightly job can't run on two replicas at once",
+        "owner": "distributed-locking-and-leases"
+      },
+      {
+        "prompt": "Customers are reporting they got charged twice for one order",
+        "owner": "idempotency-and-exactly-once"
+      },
+      {
+        "prompt": "Add structured logging and metrics to the checkout service",
+        "owner": "observability-and-instrumentation"
+      },
+      {
+        "prompt": "This endpoint is slow, profile it and speed it up",
+        "owner": "performance-optimization"
+      }
+    ]
+  },
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Review the limiter in this fixture against the deployment notes. Support says free tenants aren't throttled until well past 60/minute, and finance found two pro tenants who closed the month over their cap. Explain both and fix them.",
+      "expected_output": "Attributes the throttling miss to a per-instance counter multiplied by the replica count, and the cap overrun to a check-then-act quota plus a fail-open except; replaces both with atomic operations and makes the spend counter durable",
+      "files": [
+        "rate-limiting-and-quota-correctness"
+      ],
+      "expectations": [
+        "States that `_window_counts` is per process, so the enforced limit is 60 times the replica count — 720/minute at 12 replicas and 2,400 at the HPA ceiling — and does the arithmetic rather than describing the problem qualitatively",
+        "Notes that rolling deploys reset the in-memory counters, giving every tenant a fresh budget several times a week",
+        "Identifies `check_quota` reading the spend and `record_spend` writing it as check-then-act, so concurrent requests both fit inside the same remaining budget",
+        "Identifies `except Exception: return True` as an unrecorded fail-open on the spend cap, and says that a hard financial cap is the case where fail-open is least defensible",
+        "Notes that the spend counter lives only in Redis, which is documented to fail over and may lose recent increments, while the cap it enforces is contractual",
+        "Moves the cap check into the write so the condition and the increment are one operation, using the rowcount to decide",
+        "Distinguishes the rate limit from the quota and rejects returning 429 with `retry_after: 60` for an exhausted monthly budget, since the budget does not refill for days",
+        "Requires a test that fails when the shared counter is replaced by a local dictionary"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "We're adding a 100 requests/minute limit with a Redis counter keyed by tenant and minute. Anything wrong with that?",
+      "expected_output": "Accepts the shared atomic counter, names the fixed-window boundary and its 2x, and requires the fail-open decision, a timeout, and an actionable 429",
+      "expectations": [
+        "Confirms the shared atomic increment is the right shape and explains why a read-then-increment would not be",
+        "Names the fixed-window boundary: 100 at the end of one minute and 100 at the start of the next is 200 in a moment, and asks whether the protected system tolerates 2x",
+        "Asks what happens when Redis is unreachable and requires the answer to be written down rather than left to an exception handler",
+        "Requires a timeout on the limiter call, since it now sits on the hot path of every request",
+        "Requires `Retry-After` and reset information on the 429 rather than a bare status code"
+      ]
+    }
+  ]
+}

@@ -26,7 +26,7 @@ Most agent skill packs cover the development lifecycle — testing, review, refa
 |---|---|---|
 | [`distributed-locking-and-leases`](skills/distributed-locking-and-leases/SKILL.md) | Fencing tokens, lease revalidation, CAS over object storage, backend capability checks | ✅ Ready |
 | `queue-semantics-and-replay` | Delivery guarantees, ack placement, ordering, poison messages, DLQ replay safety | 🚧 [#12](../../issues/12) |
-| `rate-limiting-and-quota-correctness` | Shared counters, algorithm choice, fail-open vs fail-closed, quota vs throughput | 🚧 [#15](../../issues/15) |
+| [`rate-limiting-and-quota-correctness`](skills/rate-limiting-and-quota-correctness/SKILL.md) | Shared counters, algorithm choice, fail-open vs fail-closed, quota vs throughput | ✅ Ready |
 
 **Change and state**
 
