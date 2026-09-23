@@ -9,6 +9,24 @@ Versions track the catalogue: a minor bump adds or materially reworks a skill.
 
 ### Added
 
+- **Skill: `rate-limiting-and-quota-correctness`** ([#15]). A rate limiter is a
+  distributed counter with a deadline, and almost everything that goes wrong
+  with one is a counting problem rather than a policy problem. Two failures
+  dominate and both are quiet: a per-instance counter enforces the limit times
+  the replica count, and a limiter sitting on the hot path of every request has
+  its own availability question answered by a `try/except` rather than by a
+  person. The skill also separates rate limits from quotas — one protects a
+  system and refills continuously, the other protects a budget and does not
+  refill until a period rolls over — because a single 429 answering both
+  teaches callers to retry against money that will not come back for days.
+
+  The fixture pairs a limiter with the deployment notes that make it wrong: 12
+  replicas rising to 40, four rolling deploys a week, a contractual hard spend
+  cap, and a Redis that fails over. Support tickets and a finance flag are
+  given as symptoms without the diagnosis, and the eval requires the
+  arithmetic — 60/minute enforced as 720, and 2,400 at the autoscaler's
+  ceiling — rather than a qualitative description of the problem.
+
 - **Skill: `distributed-locking-and-leases`** ([#11]). A lock held across a
   network is a lease, and the one fact the whole skill follows from is that you
   cannot distinguish a dead holder from a slow one. So the lock service cannot
@@ -96,5 +114,6 @@ zero warnings.
 [#6]: https://github.com/abhisheksharma2411/distributed-systems-skills/issues/6
 [#9]: https://github.com/abhisheksharma2411/distributed-systems-skills/issues/9
 [#11]: https://github.com/abhisheksharma2411/distributed-systems-skills/issues/11
+[#15]: https://github.com/abhisheksharma2411/distributed-systems-skills/issues/15
 [#22]: https://github.com/abhisheksharma2411/distributed-systems-skills/pull/22
 [#23]: https://github.com/abhisheksharma2411/distributed-systems-skills/pull/23
