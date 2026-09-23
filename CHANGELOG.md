@@ -9,6 +9,23 @@ Versions track the catalogue: a minor bump adds or materially reworks a skill.
 
 ### Added
 
+- **Skill: `distributed-locking-and-leases`** ([#11]). A lock held across a
+  network is a lease, and the one fact the whole skill follows from is that you
+  cannot distinguish a dead holder from a slow one. So the lock service cannot
+  give you mutual exclusion — it can give you an ordering, and the resource has
+  to enforce it. The skill is built around the fence: choosing the lease from
+  the timeout you enforce rather than the p99 you measured, keeping the expiry
+  on one clock, making release conditional on ownership, checking a backend can
+  actually host a lease, and deciding fail-open versus fail-closed explicitly
+  rather than by way of a bare `except`.
+
+  The fixture is an incident rather than a toy: a rollup job whose lock was
+  held throughout, which re-checks ownership before every write, and which
+  still doubled 31 merchants' totals because the holder paused for longer than
+  its lease and nothing at the database could tell its write from the new
+  holder's. The eval requires that answer and rejects the three that do not
+  work — a longer TTL, a heartbeat, and Redlock.
+
 - **Routing collision checks in the validator** ([#9], [#23]). Routing failures
   are the dominant real-world skill bug and the quietest — nothing errors, the
   wrong skill just answers. Two checks now run across the whole catalogue:
@@ -78,5 +95,6 @@ zero warnings.
 
 [#6]: https://github.com/abhisheksharma2411/distributed-systems-skills/issues/6
 [#9]: https://github.com/abhisheksharma2411/distributed-systems-skills/issues/9
+[#11]: https://github.com/abhisheksharma2411/distributed-systems-skills/issues/11
 [#22]: https://github.com/abhisheksharma2411/distributed-systems-skills/pull/22
 [#23]: https://github.com/abhisheksharma2411/distributed-systems-skills/pull/23
