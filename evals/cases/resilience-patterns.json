@@ -1,0 +1,49 @@
+{
+  "skill_name": "resilience-patterns",
+  "trigger": {
+    "positive": [
+      {"prompt": "Add retries with backoff to this HTTP client", "top_k": 3},
+      {"prompt": "What timeout should we set for this downstream call?", "top_k": 3},
+      {"prompt": "Should we put a circuit breaker in front of this provider?", "top_k": 3},
+      {"prompt": "One slow dependency took down our whole service, how do we stop that", "top_k": 3},
+      {"prompt": "Our connection pool keeps getting exhausted during incidents", "top_k": 3}
+    ],
+    "negative": [
+      {"prompt": "Customers are reporting they got charged twice for one order", "owner": "idempotency-and-exactly-once"},
+      {"prompt": "Tenants are going over their monthly spend cap, we need a hard budget limit", "owner": "rate-limiting-and-quota-correctness"},
+      {"prompt": "Add a lock so this nightly job can't run on two replicas at once", "owner": "distributed-locking-and-leases"},
+      {"prompt": "I'm designing a checkout flow that calls inventory, payments, and email", "owner": "failure-mode-analysis"}
+    ]
+  },
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Review this gateway module against the SLO notes. The postmortem never answered why /health failed when it has no dependencies — work that out, and fix the retry configuration.",
+      "expected_output": "Identifies the shared connection pool as the reason an unrelated endpoint failed, and identifies the retry decorator as unsafe on charge_card because it retries timeouts on a non-idempotent effect; fixes both plus the missing timeouts, jitter and budget arithmetic",
+      "files": ["resilience-patterns"],
+      "expectations": [
+        "Explains that /health failed because every integration shares one `session` with `pool_maxsize=32`, so a slow pricing dependency consumed the pool and starved unrelated paths — the bulkhead answer, not a health-check bug",
+        "Identifies that `charge_card` retries on timeout while sending no idempotency key, so a request that succeeded but timed out client-side is charged again, and connects this to the provider's documented 'may or may not have been applied'",
+        "Notes that the fixture's own notes say the provider supports `Idempotency-Key` and the code does not send one",
+        "Identifies `except Exception` as retrying non-transient failures including 4xx, since `raise_for_status` raises for 400 and 422 alike",
+        "Identifies the missing timeouts on `get_price`, `send_receipt` and `recommendations`, and that 30s on `charge_card` is ten times the 3-second inbound budget",
+        "Does the budget arithmetic against the 3-second inbound deadline rather than proposing timeouts by feel",
+        "Identifies `time.sleep(BACKOFF_BASE * 2 ** attempt)` as unjittered and explains the synchronised-retry herd rather than asserting jitter is best practice",
+        "Notes that three attempts with this backoff exceed the 3-second inbound budget, so later attempts serve a caller that has already timed out",
+        "Treats the decorative `recommendations` call as the first thing to shed or bulkhead, rather than giving every dependency equal protection"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "We want to add a circuit breaker: open after 5 consecutive failures, close again after 30 seconds. Good?",
+      "expected_output": "Rejects the raw-count threshold in favour of a rate over a window with a minimum volume, and rejects the timer-based close in favour of bounded half-open probing",
+      "expectations": [
+        "Explains that a raw count of 5 trips on five-out-of-five at low traffic and never trips on 5,000-out-of-100,000 at high traffic",
+        "Requires a failure rate over a rolling window with a minimum request volume before the breaker can trip",
+        "Identifies closing on a timer as re-releasing the whole waiting fleet at once, and requires a bounded number of half-open probes instead",
+        "Asks what is served while the breaker is open and treats leaving it unspecified as a decision made by accident",
+        "Asks whether the protected call is idempotent before discussing what happens to in-flight retries"
+      ]
+    }
+  ]
+}

@@ -16,7 +16,7 @@ Most agent skill packs cover the development lifecycle — testing, review, refa
 |---|---|---|
 | [`idempotency-and-exactly-once`](skills/idempotency-and-exactly-once/SKILL.md) | Retry-safe side effects, dedup stores, atomic claims, reconciliation | ✅ Ready |
 | [`failure-mode-analysis`](skills/failure-mode-analysis/SKILL.md) | Enumerating partial failures before writing the happy path; the three-outcome table; blast radius; degradation ladder | ✅ Ready |
-| `resilience-patterns` | Timeouts, backoff, jitter, circuit breakers, bulkheads, backpressure, load shedding | 🚧 [#2](../../issues/2) |
+| [`resilience-patterns`](skills/resilience-patterns/SKILL.md) | Timeouts, backoff, jitter, circuit breakers, bulkheads, backpressure, load shedding | ✅ Ready |
 | `distributed-data-consistency` | Sagas, outbox pattern, compensations, read-after-write, dual-write elimination | 🚧 [#3](../../issues/3) |
 | `money-movement-correctness` | Ledger invariants, double-entry, settlement windows, dispute handling, audit trails | 🚧 [#4](../../issues/4) |
 
