@@ -1,0 +1,49 @@
+{
+  "skill_name": "queue-semantics-and-replay",
+  "trigger": {
+    "positive": [
+      {"prompt": "Write a Kafka consumer that fulfils orders from this topic", "top_k": 3},
+      {"prompt": "Where should we ack — before or after the side effect?", "top_k": 3},
+      {"prompt": "We need to replay our dead-letter queue, what should we watch out for?", "top_k": 3},
+      {"prompt": "One bad message is blocking the whole partition", "top_k": 3},
+      {"prompt": "Messages are being processed twice after every deploy", "top_k": 3}
+    ],
+    "negative": [
+      {"prompt": "Customers are reporting they got charged twice for one order", "owner": "idempotency-and-exactly-once"},
+      {"prompt": "Add retries with backoff to this HTTP client", "owner": "resilience-patterns"},
+      {"prompt": "Implement leader election across our worker replicas", "owner": "distributed-locking-and-leases"},
+      {"prompt": "Add structured logging and metrics to the checkout service", "owner": "observability-and-instrumentation"}
+    ]
+  },
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Review this consumer and replay script against the platform notes. Three incidents are open: customers charged for orders they never received, 9 double charges the day after a DLQ drain, and a partition that stalled for 40 minutes. Explain each.",
+      "expected_output": "Maps the lost orders to ack-before-effect, the double charges to a DLQ replayed past the 48-hour key retention through a path that bypasses the consumer, and the stalled partition to unbounded in-handler retries; corrects the exactly-once misreading",
+      "files": ["queue-semantics-and-replay"],
+      "expectations": [
+        "Identifies `msg.ack()` as the first statement in `handle`, before any side effect, and explains that a crash between the ack and `send_confirmation` loses the message with no redelivery — the charged-but-never-received tickets",
+        "Also identifies `auto_ack=True` on the subscribe call as a second, independent path to the same loss, rather than stopping at the explicit ack",
+        "Connects the 9 double charges to the DLQ being drained 11 days after dead-lettering while idempotency keys are swept at 48 hours, so the provider key was gone and the second charge was accepted",
+        "States that key retention must outlive the DLQ's 30-day retention, and names the specific mismatch (48 hours versus 30 days) rather than recommending longer retention generically",
+        "Identifies that `replay.py` reimplements fulfilment instead of replaying through the consumer's handler, so it bypasses whatever dedup the live path has and drops `send_confirmation` entirely",
+        "Connects the stalled partition to the in-handler retry loop, which retries the same message up to 5 times inline and blocks its partition while doing so, with no dead-letter route in the consumer itself",
+        "Corrects the platform note's reading of `exactly_once_v2`: it covers Kafka-to-Kafka transactions and does not extend to the card charge or the confirmation email",
+        "Notes that deploying 3x a day makes rebalance-driven redelivery a routine event rather than an edge case",
+        "Requires a test that fails when the ack is moved above the side effect"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Our consumer acks after processing and we use SQS FIFO, which deduplicates. Do we still need idempotency keys?",
+      "expected_output": "Explains that FIFO deduplication is a five-minute content window, not a delivery guarantee, and that every retry chain that matters is longer",
+      "expectations": [
+        "States that SQS FIFO deduplication covers a five-minute window on a content hash or supplied dedup id",
+        "Points out that redelivery after a visibility-timeout expiry or a consumer crash can fall outside that window",
+        "Names DLQ replay as the case that is longer than the window by days",
+        "Confirms ack-after-processing is the correct placement and explains that it is what creates the duplicates that must then be absorbed",
+        "Routes the dedup mechanism itself to `idempotency-and-exactly-once` rather than restating it"
+      ]
+    }
+  ]
+}

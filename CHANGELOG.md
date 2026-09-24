@@ -9,6 +9,29 @@ Versions track the catalogue: a minor bump adds or materially reworks a skill.
 
 ### Added
 
+- **Skill: `queue-semantics-and-replay`** ([#12]). A queue looks like it removes
+  the hard parts of distributed systems and it relocates them: the broker will
+  deliver your message, but it cannot tell you whether your *consumer* finished
+  with it, and every real defect lives in that gap. Four decisions settle
+  whether a consumer is correct — which guarantee you actually have, where the
+  ack goes, what happens to a message that can never succeed, and whether a
+  replay months later is safe — and three of them are usually made by accident,
+  or by a client library's default.
+
+  The framing the skill insists on: a dead-letter queue is not an error log, it
+  is queued work, and draining one is a bulk re-delivery of effects that already
+  partly happened, performed under time pressure during an incident. The
+  retention rule falls out of that and is the same one
+  `idempotency-and-exactly-once` states from the other side.
+
+  The fixture is an order pipeline with three open incidents and no diagnoses —
+  customers charged for orders never received, nine double charges the day after
+  a DLQ drain, and a partition that stalled for forty minutes. Each has a
+  distinct cause in the code, the numbers needed to prove the middle one are in
+  the platform notes (48-hour key sweep against 30-day DLQ retention, drained on
+  day eleven), and the notes also contain the `exactly_once_v2` misreading the
+  eval requires correcting.
+
 - **Skill: `resilience-patterns`** ([#2]). Almost every cascading outage has
   one shape: a dependency gets *slow*, not down, callers wait, and the waiting
   spreads until services with no relationship to the original fault stop
@@ -136,6 +159,7 @@ zero warnings.
 [#2]: https://github.com/abhisheksharma2411/distributed-systems-skills/issues/2
 [#9]: https://github.com/abhisheksharma2411/distributed-systems-skills/issues/9
 [#11]: https://github.com/abhisheksharma2411/distributed-systems-skills/issues/11
+[#12]: https://github.com/abhisheksharma2411/distributed-systems-skills/issues/12
 [#15]: https://github.com/abhisheksharma2411/distributed-systems-skills/issues/15
 [#22]: https://github.com/abhisheksharma2411/distributed-systems-skills/pull/22
 [#23]: https://github.com/abhisheksharma2411/distributed-systems-skills/pull/23
