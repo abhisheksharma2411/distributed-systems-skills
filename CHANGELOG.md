@@ -9,6 +9,27 @@ Versions track the catalogue: a minor bump adds or materially reworks a skill.
 
 ### Added
 
+- **Skill: `resilience-patterns`** ([#2]). Almost every cascading outage has
+  one shape: a dependency gets *slow*, not down, callers wait, and the waiting
+  spreads until services with no relationship to the original fault stop
+  answering. Slow is worse than down — a dependency that fails fast sheds load,
+  one that hangs absorbs your capacity and returns nothing — and every pattern
+  in the skill exists to convert slow into fast-failed before it spreads.
+
+  The load-bearing cross-reference the issue asked for is explicit: this skill
+  decides *whether and how* to retry, `idempotency-and-exactly-once` decides
+  whether that retry is *safe*, and the handoff is stated at the retry step, in
+  the rationalization table, and as the last verification item. A retry policy
+  on a non-idempotent effect is a duplication policy.
+
+  The fixture is a real postmortem with its question left open: pricing got
+  slow, the whole checkout service stopped answering including `/health`, and
+  nobody ever explained why an endpoint with no dependencies failed. The answer
+  is the shared connection pool, and the eval requires it — along with noticing
+  that the retry added *as the postmortem's action item* now retries timeouts on
+  a card charge that sends no idempotency key, against a provider whose own docs
+  say such a request may or may not have been applied.
+
 - **Skill: `rate-limiting-and-quota-correctness`** ([#15]). A rate limiter is a
   distributed counter with a deadline, and almost everything that goes wrong
   with one is a counting problem rather than a policy problem. Two failures
@@ -112,6 +133,7 @@ zero warnings.
 [0.1.0]: https://github.com/abhisheksharma2411/distributed-systems-skills/releases/tag/v0.1.0
 
 [#6]: https://github.com/abhisheksharma2411/distributed-systems-skills/issues/6
+[#2]: https://github.com/abhisheksharma2411/distributed-systems-skills/issues/2
 [#9]: https://github.com/abhisheksharma2411/distributed-systems-skills/issues/9
 [#11]: https://github.com/abhisheksharma2411/distributed-systems-skills/issues/11
 [#15]: https://github.com/abhisheksharma2411/distributed-systems-skills/issues/15
