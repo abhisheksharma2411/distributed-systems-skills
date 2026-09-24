@@ -1,0 +1,52 @@
+{
+  "skill_name": "money-movement-correctness",
+  "trigger": {
+    "positive": [
+      {"prompt": "Review our merchant wallet schema and balance handling", "top_k": 3},
+      {"prompt": "How should chargebacks and clawbacks flow through the ledger?", "top_k": 3},
+      {"prompt": "Our balances don't match the provider statement at month end", "top_k": 3},
+      {"prompt": "Finance asked why a merchant's balance dropped and we can't tell them", "top_k": 3},
+      {"prompt": "Design the schema for a payouts wallet with refunds", "top_k": 3}
+    ],
+    "negative": [
+      {"prompt": "Customers are reporting they got charged twice for one order", "owner": "idempotency-and-exactly-once"},
+      {"prompt": "This handler saves to the database and then publishes an event, is that safe?", "owner": "distributed-data-consistency"},
+      {"prompt": "What happens if the payment provider times out halfway through?", "owner": "failure-mode-analysis"},
+      {"prompt": "Add retries with backoff to this HTTP client", "owner": "resilience-patterns"}
+    ]
+  },
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Review this wallet against the schema and the finance notes. Four things are open: a monthly gap being booked as rounding, a merchant whose balance dropped with no traceable cause, a negative balance after a chargeback, and a seven-year explainability requirement we haven't answered. Work out which are the same problem.",
+      "expected_output": "Identifies the mutable balance column as the root cause of the untraceable drop and the unanswerable explainability requirement, identifies DOUBLE PRECISION as the source of the persistent small gap, identifies the destructive refund/chargeback/reconciliation paths, and proposes an append-only entry log with derived balances",
+      "files": ["money-movement-correctness"],
+      "expectations": [
+        "Names `UPDATE merchants SET balance = balance ± ...` as the root cause of merchant 8812's untraceable drop: the balance has no history, so nothing can say what moved it",
+        "Connects the same cause to the seven-year explainability requirement being unanswerable, rather than treating that as a separate documentation task",
+        "Identifies `DOUBLE PRECISION` for money in the schema and `float` amounts in the code as the source of the small persistent monthly gap, and rejects booking it as a rounding adjustment",
+        "Notes there is no currency column beside any amount",
+        "Identifies `refund` mutating `charges.amount` as destroying the record of what was originally charged",
+        "Identifies `apply_chargeback` deleting from `settlement_log` as destroying history rather than compensating it",
+        "Identifies `reconcile` issuing an UPDATE on a mismatched amount, and states that reconciliation may add and flag but must never edit",
+        "Notes that an amount mismatch is the case that needs a human, not an automatic correction",
+        "Addresses merchant 4417's negative balance as an undefined clawback policy that must be decided deliberately rather than emerging from the payout job's `balance <= 0` skip",
+        "Identifies the un-keyed `refund` and the re-run support refunds as a missing idempotency key, and routes the mechanism to `idempotency-and-exactly-once`",
+        "Proposes an append-only entry log with balances derived from it, and a snapshot with a rebuild path if performance is raised",
+        "Requires an invariant query asserting entries sum to zero per transfer, run against a seeded violation"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "We're keeping the balance column because recomputing from entries is too slow at our volume, but we'll also write an append-only audit log of every change. Is that enough?",
+      "expected_output": "Rejects two sources of truth, and offers the snapshot-with-rebuild-path alternative that actually addresses the performance concern",
+      "expectations": [
+        "States that a balance column plus an audit log is two sources of truth that can disagree, with no rule for which wins",
+        "Points out that when they disagree the audit log is the only one that can be checked, which means it was the truth all along",
+        "Offers a periodic snapshot plus entries-since as the performance answer, and distinguishes it from a mutable balance by the existence of a rebuild path",
+        "Requires a test asserting the derived balance equals the snapshot for every account",
+        "Does not accept the performance premise without asking what volume and what query, since the snapshot approach is usually sufficient"
+      ]
+    }
+  ]
+}
