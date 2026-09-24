@@ -1,0 +1,49 @@
+{
+  "skill_name": "distributed-data-consistency",
+  "trigger": {
+    "positive": [
+      {"prompt": "This handler saves to the database and then publishes an event, is that safe?", "top_k": 3},
+      {"prompt": "Design a checkout saga with compensations for each step", "top_k": 3},
+      {"prompt": "Our two services disagree about which orders are fulfilled", "top_k": 3},
+      {"prompt": "Should we use the transactional outbox pattern here?", "top_k": 3},
+      {"prompt": "A client reads right after writing and gets stale data", "top_k": 3}
+    ],
+    "negative": [
+      {"prompt": "Customers are reporting they got charged twice for one order", "owner": "idempotency-and-exactly-once"},
+      {"prompt": "Where should we ack — before or after the side effect?", "owner": "queue-semantics-and-replay"},
+      {"prompt": "Add retries with backoff to this HTTP client", "owner": "resilience-patterns"},
+      {"prompt": "Add a lock so this nightly job can't run on two replicas at once", "owner": "distributed-locking-and-leases"}
+    ]
+  },
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Review this fulfilment handler against the operations notes. Four separate tickets are open and nobody has connected them; the service is green on every dashboard. Explain where the missing orders are going.",
+      "expected_output": "Identifies the dual write between the commit and the publish as the common cause of the Stripe/orders gap and the missing analytics events, identifies the uncompensated multi-step flow as the cause of the charged-but-no-shipment tickets, and rejects the rollback() function as a real rollback",
+      "files": ["distributed-data-consistency"],
+      "expectations": [
+        "Names the gap between the transaction commit and `events.publish` as a dual write, and connects it to both the ~1% missing analytics events and the finance count mismatch",
+        "Explains that the dashboards are green because nothing errors: the process simply stops between two calls that each succeeded",
+        "Identifies `cache.delete` inside the transaction as a second dual write, invalidating even when the transaction rolls back",
+        "Identifies the steps after the commit — reserve, shipment, email — as an uncompensated saga, and maps that to the 11 charged-but-no-shipment tickets",
+        "Notes that the email is irreversible and is ordered before the final database update, so a failure after it cannot be cleanly undone, and connects that to the duplicate-confirmation ticket",
+        "Rejects `rollback()` as a rollback: it resets a column locally and releases neither the inventory reservation nor the shipment, and is not idempotent",
+        "Proposes an outbox written in the same transaction rather than reordering the publish before the commit",
+        "Proposes business invariants (paid-but-not-fulfilled, reserved-with-no-order, unsent outbox age) rather than more infrastructure metrics",
+        "Requires a test that fails when the outbox insert is replaced by a direct publish"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "We added a transactional outbox. A separate relay polls it and publishes. For latency-sensitive events we still publish directly from the handler as well. Any problem with that?",
+      "expected_output": "Identifies that a second publisher reintroduces the dual write next to the mechanism that removed it, and addresses ordering and outbox monitoring",
+      "expectations": [
+        "States that the direct publish is a dual write again, and that having the outbox alongside it does not help those events",
+        "Points out the two publishers can also deliver the same event twice and out of order relative to each other",
+        "Requires the relay to be the only publisher, and suggests reducing relay latency rather than bypassing it",
+        "Raises per-key ordering, so a status update cannot overtake the creation it describes",
+        "Requires an alert on the age of the oldest unsent outbox row, since a dead relay is invisible on every other dashboard"
+      ]
+    }
+  ]
+}

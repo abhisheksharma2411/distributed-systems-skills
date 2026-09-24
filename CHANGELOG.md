@@ -9,6 +9,28 @@ Versions track the catalogue: a minor bump adds or materially reworks a skill.
 
 ### Added
 
+- **Skill: `distributed-data-consistency`** ([#3]). The defect behind most
+  cross-service drift is two lines that both look fine — a commit, then a
+  publish — and it is invisible in testing because both calls succeed on a
+  healthy machine. The framing the skill insists on is that "keep them in sync"
+  is not achievable without a transaction spanning both systems, and you do not
+  have one: the goal is to make the disagreement **bounded, detectable and
+  self-correcting**. The outbox bounds it, invariant monitoring detects it,
+  compensation corrects it.
+
+  Reordering is addressed head-on, because it is the first thing people reach
+  for: publishing before committing turns "committed but never published" into
+  "published but never committed", which is worse — consumers act on an order
+  that does not exist.
+
+  The fixture is an order pipeline whose dashboards are all green and which has
+  four unconnected tickets: a monthly Stripe-versus-orders gap of 4 then 7 then
+  6, eleven charged-but-no-shipment support tickets, analytics events running
+  ~1% below the database, and one duplicate confirmation email. They share two
+  root causes, and the eval requires connecting them rather than listing
+  defects — including rejecting the fixture's own `rollback()` function, which
+  resets a local column and releases neither the reservation nor the shipment.
+
 - **Skill: `queue-semantics-and-replay`** ([#12]). A queue looks like it removes
   the hard parts of distributed systems and it relocates them: the broker will
   deliver your message, but it cannot tell you whether your *consumer* finished
@@ -157,6 +179,7 @@ zero warnings.
 
 [#6]: https://github.com/abhisheksharma2411/distributed-systems-skills/issues/6
 [#2]: https://github.com/abhisheksharma2411/distributed-systems-skills/issues/2
+[#3]: https://github.com/abhisheksharma2411/distributed-systems-skills/issues/3
 [#9]: https://github.com/abhisheksharma2411/distributed-systems-skills/issues/9
 [#11]: https://github.com/abhisheksharma2411/distributed-systems-skills/issues/11
 [#12]: https://github.com/abhisheksharma2411/distributed-systems-skills/issues/12
