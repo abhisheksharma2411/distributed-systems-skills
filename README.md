@@ -33,7 +33,7 @@ Most agent skill packs cover the development lifecycle — testing, review, refa
 | Skill | Covers | Status |
 |---|---|---|
 | `data-migration-and-backfill` | Expand/migrate/contract, resumable backfills, verification before contraction | 🚧 [#13](../../issues/13) |
-| `caching-and-staleness` | Staleness budgets, invalidation, stampede protection, what must never be cached | 🚧 [#14](../../issues/14) |
+| [`caching-and-staleness`](skills/caching-and-staleness/SKILL.md) | Staleness budgets, invalidation, stampede protection, what must never be cached | ✅ Ready |
 
 See [#16](../../issues/16) for the full roadmap, what is deliberately out of scope, and candidates still under consideration.
 
