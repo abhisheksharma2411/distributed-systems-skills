@@ -1,0 +1,52 @@
+{
+  "skill_name": "caching-and-staleness",
+  "trigger": {
+    "positive": [
+      { "prompt": "I want to put a cache in front of our permissions service, what TTL should I use?", "top_k": 1 },
+      { "prompt": "Users are complaining they can't see a document right after it's shared with them", "top_k": 3 },
+      { "prompt": "Our origin gets hammered every time a popular cache key expires — how do we stop the thundering herd?", "top_k": 3 },
+      { "prompt": "Review this change that adds a Redis cache to the product price lookup", "top_k": 3 }
+    ],
+    "negative": [
+      {
+        "prompt": "Our Redis instance keeps hitting its memory limit, which eviction policy should we pick?",
+        "owner": "observability-and-instrumentation"
+      },
+      {
+        "prompt": "How do we make sure a payment retry doesn't charge the customer twice?",
+        "owner": "idempotency-and-exactly-once"
+      },
+      {
+        "prompt": "We need to roll out a schema change without downtime",
+        "owner": "data-migration-and-backfill"
+      }
+    ]
+  },
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Review permissions.py. Is this cache safe to ship?",
+      "expected_output": "Identifies that an authorization decision is being cached, that per-pod invalidation cannot reach the other 11 pods, and that the compliance offboarding path never invalidates at all.",
+      "files": ["caching-and-staleness"],
+      "expectations": [
+        "Names caching the authorization decision itself as the core problem, not merely the TTL length",
+        "Identifies that invalidate_user only clears the pod that served the request, so the other 11 keep serving the revoked permission",
+        "Identifies that the compliance offboarding job never reaches this code, so revocation is bounded only by the 300s TTL",
+        "Connects the unreproducible offboarding incident to per-pod cache state rather than treating it as a flake",
+        "Does not accept shortening the TTL as a sufficient fix for the authorization decision",
+        "States a staleness budget, or says one is required before this can ship"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "The authz service spikes at the top of every hour. Fix it.",
+      "expected_output": "Attributes the spike to synchronised expiry and proposes coalescing or jitter, while noting the per-process limit of in-process coalescing.",
+      "files": ["caching-and-staleness"],
+      "expectations": [
+        "Attributes the top-of-hour spike to many entries expiring together rather than to the report job alone",
+        "Proposes request coalescing or TTL jitter rather than only raising the TTL",
+        "Notes that coalescing inside a single process bounds the herd per pod, not globally across the 12 pods"
+      ]
+    }
+  ]
+}
