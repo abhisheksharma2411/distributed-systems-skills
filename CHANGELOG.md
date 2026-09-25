@@ -9,6 +9,32 @@ Versions track the catalogue: a minor bump adds or materially reworks a skill.
 
 ### Added
 
+- **Skill: `money-movement-correctness`** ([#4]). The issue calls this the
+  highest-value skill on the roadmap, and it turns on a single structural
+  decision: `UPDATE accounts SET balance = balance + 50` is a number with no
+  history, so when it is wrong nothing can say when it became wrong or what it
+  should have been. The alternative is not more careful updates but refusing to
+  store the balance as a fact at all — the entry log is the truth and every
+  balance is a view of it. The performance objection is answered by a snapshot
+  with a rebuild path, which is a cache rather than a second truth.
+
+  Two framings the skill leans on. Double-entry is presented as a **checksum**,
+  not accounting ceremony: entries summing to zero per transfer is one query
+  that catches value appearing from nowhere, and a system that has never run it
+  does not have double-entry, it has two columns. And reconciliation gets a
+  rule rather than a procedure — the provider is authoritative for what
+  *happened*, your ledger for what you *intended*, and reconciliation may add
+  and flag but may never edit.
+
+  The fixture is a merchant wallet plus its schema and four finance notes that
+  look unrelated: a monthly gap being booked as rounding, a merchant whose
+  balance dropped with no traceable cause, a negative balance after a chargeback
+  landed the day after a payout, and an unanswered seven-year explainability
+  requirement. Two of them are the same root cause and the eval requires saying
+  so. The schema carries `DOUBLE PRECISION` for money and no currency column;
+  the code's refund mutates the original charge, its chargeback deletes from the
+  settlement log, and its reconciliation issues an `UPDATE`.
+
 - **Skill: `distributed-data-consistency`** ([#3]). The defect behind most
   cross-service drift is two lines that both look fine — a commit, then a
   publish — and it is invisible in testing because both calls succeed on a
@@ -180,6 +206,7 @@ zero warnings.
 [#6]: https://github.com/abhisheksharma2411/distributed-systems-skills/issues/6
 [#2]: https://github.com/abhisheksharma2411/distributed-systems-skills/issues/2
 [#3]: https://github.com/abhisheksharma2411/distributed-systems-skills/issues/3
+[#4]: https://github.com/abhisheksharma2411/distributed-systems-skills/issues/4
 [#9]: https://github.com/abhisheksharma2411/distributed-systems-skills/issues/9
 [#11]: https://github.com/abhisheksharma2411/distributed-systems-skills/issues/11
 [#12]: https://github.com/abhisheksharma2411/distributed-systems-skills/issues/12
