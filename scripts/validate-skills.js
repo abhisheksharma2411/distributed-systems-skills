@@ -482,21 +482,69 @@ function checkEvalCase(name) {
   return data;
 }
 
-function checkOrphans(skills) {
-  if (fs.existsSync(CASES_DIR)) {
-    for (const f of fs.readdirSync(CASES_DIR)) {
+/**
+ * Language tags a fixture directory may be suffixed with.
+ *
+ * Explicit rather than "any suffix": the orphan check exists to catch fixture
+ * directories nothing references, and accepting `<skill>-<anything>` would give
+ * that up — a directory misspelled once would pass forever.
+ */
+const FIXTURE_LANGUAGE_SUFFIXES = new Set([
+  'go', 'rust', 'java', 'kotlin', 'scala', 'swift', 'elixir', 'ruby', 'php',
+  'ts', 'typescript', 'js', 'javascript', 'py', 'python', 'cs', 'csharp',
+]);
+
+/**
+ * The skill a fixture directory belongs to, or null if nothing claims it.
+ *
+ * A skill may carry one fixture directory per language: an eval's `files` entry
+ * names a directory and the whole directory becomes the workspace, so a second
+ * language cannot simply be dropped in beside the first without changing what
+ * the eval measures (#8).
+ *
+ * Overlapping skill names need no ordering rule: the suffix must be a single
+ * language tag, so given `money-movement` and `money-movement-correctness`,
+ * only the longer one can claim `money-movement-correctness-go` — the shorter
+ * would have to accept `correctness-go` as a language. Sorting by length first
+ * was in an earlier version of this; a mutation test showed it changed nothing,
+ * so it is gone rather than left as decoration.
+ */
+function fixtureOwner(dirName, skills) {
+  if (skills.includes(dirName)) return dirName;
+  for (const skill of skills) {
+    if (!dirName.startsWith(`${skill}-`)) continue;
+    const suffix = dirName.slice(skill.length + 1);
+    if (FIXTURE_LANGUAGE_SUFFIXES.has(suffix)) return skill;
+  }
+  return null;
+}
+
+/**
+ * Directories are injectable so a test can drive this against a temp tree.
+ * Without that, a mutation deleting the fixture branch entirely still passed —
+ * `fixtureOwner` was covered, but nothing checked it was wired to anything.
+ */
+function checkOrphans(skills, { casesDir = CASES_DIR, fixturesDir = FIXTURES_DIR } = {}) {
+  const found = [];
+  const record = (file, msg) => {
+    found.push(`${file}: ${msg}`);
+    warn(file, msg);
+  };
+  if (fs.existsSync(casesDir)) {
+    for (const f of fs.readdirSync(casesDir)) {
       if (f.endsWith('.json') && !skills.includes(f.replace(/\.json$/, ''))) {
-        warn(rel(path.join(CASES_DIR, f)), 'case file has no corresponding skill');
+        record(rel(path.join(casesDir, f)), 'case file has no corresponding skill');
       }
     }
   }
-  if (fs.existsSync(FIXTURES_DIR)) {
-    for (const d of fs.readdirSync(FIXTURES_DIR, { withFileTypes: true })) {
-      if (d.isDirectory() && !skills.includes(d.name)) {
-        warn(rel(path.join(FIXTURES_DIR, d.name)), 'fixture directory has no corresponding skill');
+  if (fs.existsSync(fixturesDir)) {
+    for (const d of fs.readdirSync(fixturesDir, { withFileTypes: true })) {
+      if (d.isDirectory() && !fixtureOwner(d.name, skills)) {
+        record(rel(path.join(fixturesDir, d.name)), 'fixture directory has no corresponding skill');
       }
     }
   }
+  return found;
 }
 
 function main() {
@@ -551,5 +599,7 @@ if (require.main === module) {
     findDescriptionCollisions,
     findTriggerConflicts,
     COLLISION_THRESHOLD,
+    fixtureOwner,
+    checkOrphans,
   };
 }

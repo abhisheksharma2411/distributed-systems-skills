@@ -28,6 +28,8 @@ const {
   findDescriptionCollisions,
   findTriggerConflicts,
   COLLISION_THRESHOLD,
+  fixtureOwner,
+  checkOrphans,
 } = require('./validate-skills.js');
 
 // Built rather than written literally so this file does not contain fences that
@@ -469,4 +471,71 @@ test('a subheading inside the Skills section does not end the roster', () => {
 
 test('a missing README is an empty roster, not a crash', () => {
   assert.deepEqual([...plannedSkills(path.join(os.tmpdir(), 'dss-no-such-readme.md'))], []);
+});
+
+// ─── Language-variant fixture directories (#8) ───────────────────────────────
+
+const SKILLS = ['idempotency-and-exactly-once', 'money-movement-correctness'];
+
+test('a fixture directory named exactly after a skill belongs to it', () => {
+  assert.equal(fixtureOwner('idempotency-and-exactly-once', SKILLS), 'idempotency-and-exactly-once');
+});
+
+test('a language-suffixed fixture directory belongs to the skill it names', () => {
+  // The eval workspace is the whole directory, so a second language needs its
+  // own directory rather than a file dropped beside the Python one. Without
+  // this, CI (--strict) fails a contributor for a layout the design requires.
+  for (const lang of ['go', 'ts', 'typescript', 'java', 'rust']) {
+    assert.equal(
+      fixtureOwner(`idempotency-and-exactly-once-${lang}`, SKILLS),
+      'idempotency-and-exactly-once',
+      `-${lang} must resolve to its skill`
+    );
+  }
+});
+
+test('an unknown suffix is still orphaned, so a typo is not silently accepted', () => {
+  // The point of the orphan check is catching directories nothing references.
+  // Accepting any `<skill>-<anything>` would give that up entirely.
+  assert.equal(fixtureOwner('idempotency-and-exactly-once-typo', SKILLS), null);
+  assert.equal(fixtureOwner('idempotency-and-exactly-once-', SKILLS), null);
+});
+
+test('a directory that matches no skill is orphaned', () => {
+  assert.equal(fixtureOwner('not-a-skill', SKILLS), null);
+  assert.equal(fixtureOwner('not-a-skill-go', SKILLS), null);
+});
+
+test('overlapping skill names resolve to the right owner', () => {
+  // The shorter name cannot claim it: that would require `correctness-go` to be
+  // a language tag. No ordering rule needed, and this pins that.
+  const overlapping = ['money-movement', 'money-movement-correctness'];
+  assert.equal(fixtureOwner('money-movement-correctness-go', overlapping), 'money-movement-correctness');
+});
+
+test('the orphan check is actually wired to fixtureOwner', () => {
+  // `fixtureOwner` being correct proves nothing if nothing calls it: deleting
+  // the fixture branch outright left every other test in this file green.
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dss-orphans-'));
+  try {
+    const fixtures = path.join(dir, 'fixtures');
+    for (const name of [
+      'idempotency-and-exactly-once',      // exact match  -> no warning
+      'idempotency-and-exactly-once-go',   // language variant -> no warning
+      'idempotency-and-exactly-once-typo', // unknown suffix -> warned
+      'nothing-claims-this',               // no skill at all -> warned
+    ]) {
+      fs.mkdirSync(path.join(fixtures, name), { recursive: true });
+    }
+
+    const found = checkOrphans(['idempotency-and-exactly-once'], {
+      casesDir: path.join(dir, 'no-cases'),
+      fixturesDir: fixtures,
+    });
+
+    const warned = found.map((line) => line.split(':')[0].split(path.sep).pop()).sort();
+    assert.deepEqual(warned, ['idempotency-and-exactly-once-typo', 'nothing-claims-this']);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
