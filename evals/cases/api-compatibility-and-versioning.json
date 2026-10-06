@@ -1,0 +1,55 @@
+{
+  "skill_name": "api-compatibility-and-versioning",
+  "trigger": {
+    "positive": [
+      { "prompt": "Is adding a new value to this status enum a breaking change?", "top_k": 1 },
+      { "prompt": "We want to remove a response field our dashboard says nobody uses", "top_k": 3 },
+      { "prompt": "How long should the deprecation window be before we delete the old endpoint?", "top_k": 3 },
+      { "prompt": "A partner integration broke after Friday's release but all our tests passed", "top_k": 3 }
+    ],
+    "negative": [
+      {
+        "prompt": "Our nightly job charges some customers twice when it retries",
+        "owner": "idempotency-and-exactly-once"
+      },
+      {
+        "prompt": "A slow downstream dependency is taking our whole service down",
+        "owner": "resilience-patterns"
+      },
+      {
+        "prompt": "How stale can this cached permission check be?",
+        "owner": "caching-and-staleness"
+      }
+    ]
+  },
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Review the payouts API changes in release-notes.md against payouts_api.py. The PR says non-breaking cleanup — is it?",
+      "expected_output": "Rejects the non-breaking label. Identifies the new enum value, the retyped money fields, and the changed default as breaking for live consumers, and challenges the telemetry the field removal rests on.",
+      "files": ["api-compatibility-and-versioning"],
+      "expectations": [
+        "Says the release is not non-breaking, and names at least three of the four changes as breaking",
+        "Identifies `partially_paid` as breaking for consumers with an exhaustive switch or a strict deserializer, despite being additive to the enum",
+        "Identifies the integer-cents to decimal-string change as breaking every consumer doing arithmetic on amount or fee",
+        "Identifies the page-size change from 50 to 20 as silently altering results for callers that pass no limit, with no error to signal it",
+        "Challenges the `legacy_reference` removal on the grounds that the dashboard records request paths and parameters, not which response fields were parsed",
+        "Notes that the three partners arrive through one gateway and are aggregated as a single caller, so per-consumer usage cannot be read from that dashboard",
+        "Ties the deprecation window to the 17-month mobile tail and the absence of forced upgrade, rather than to a chosen date",
+        "Does not accept a changelog entry or release note as sufficient notice for the named partner integrations"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "We deploy this with a rolling release across 20 pods. Anything to worry about?",
+      "expected_output": "Raises forward compatibility: during the rollout and any rollback, the old version serves and reads alongside the new one, and the last three releases were rolled back.",
+      "files": ["api-compatibility-and-versioning"],
+      "expectations": [
+        "Identifies that during a rolling deploy both versions serve traffic, so one client can receive both shapes of the same field",
+        "Raises rollback explicitly, noting the last three releases were each rolled back at least once",
+        "Asks whether the previous version tolerates records and values the new version produced, including the new enum value",
+        "Treats rollback as a path that must be tested rather than assumed"
+      ]
+    }
+  ]
+}
