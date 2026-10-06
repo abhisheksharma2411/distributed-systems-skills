@@ -1,0 +1,56 @@
+{
+  "skill_name": "data-migration-and-backfill",
+  "trigger": {
+    "positive": [
+      { "prompt": "We need to roll out a schema change without downtime", "top_k": 1 },
+      { "prompt": "Write a backfill to populate the new fee_cents column on our settlements table", "top_k": 3 },
+      { "prompt": "Is it safe to drop the old column now that the new one is populated?", "top_k": 3 },
+      { "prompt": "Some rows still have the old shape after the migration finished — how did that happen?", "top_k": 3 }
+    ],
+    "negative": [
+      {
+        "prompt": "Our nightly job charges some customers twice when it retries",
+        "owner": "idempotency-and-exactly-once"
+      },
+      {
+        "prompt": "What TTL should we put on the product price lookup?",
+        "owner": "caching-and-staleness"
+      },
+      {
+        "prompt": "Design the sharding key for a new events table",
+        "owner": "distributed-data-consistency"
+      }
+    ]
+  },
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Review backfill_merchant_fees.py. Is this safe to run against production?",
+      "expected_output": "Identifies that the backfill is not resumable, that the merchant_totals increment is non-idempotent, that a crash between the two UPDATEs permanently undercounts, that IS NULL is a self-refilling work queue while dual-writing is live, that sampling is not verification, and that the script drops the old column itself.",
+      "files": ["data-migration-and-backfill"],
+      "expectations": [
+        "Names `fees_collected = fees_collected + %s` as non-idempotent, so re-running after an interruption double-counts",
+        "Identifies that the two UPDATEs are not in one transaction, so a crash between them leaves fee_cents set and the total never incremented",
+        "Follows that through: because the work queue is `WHERE fee_cents IS NULL`, that row is never revisited and the undercount is permanent",
+        "Identifies `WHERE fee_cents IS NULL` as a self-refilling queue, since the live dual write inserts rows before setting fee_cents",
+        "Requires a durable checkpoint outside the process rather than deriving remaining work from the data",
+        "Rejects the 1000-row random sample as verification and requires a full-table comparison run to completion",
+        "Flags that the script drops fee_bps itself, immediately after verifying, while 40 pods are still writing it",
+        "Names dropping the column as the point of no return and separates it into its own deploy"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "The backfill got killed by a deploy halfway through. Just re-run it, right?",
+      "expected_output": "Refuses the plain re-run: the surviving rows are fine but the interrupted ones may have a fee recorded and no total, and re-running compounds rather than repairs.",
+      "files": ["data-migration-and-backfill"],
+      "expectations": [
+        "Says a plain re-run is not safe, and says why before proposing a fix",
+        "Distinguishes rows that completed both UPDATEs from rows that completed only the first",
+        "Notes that the IS NULL guard hides the half-done rows from a re-run rather than correcting them",
+        "Proposes reconciling merchant_totals from settlements rather than trusting the running total",
+        "Requires the backfill be made idempotent and checkpointed before it is run again"
+      ]
+    }
+  ]
+}
