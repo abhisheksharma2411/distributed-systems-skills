@@ -42,7 +42,7 @@
         "idempotency-and-exactly-once"
       ],
       "expectations": [
-        "Idempotency key is derived from a stable business intent, never uuid4() or a timestamp per attempt",
+        "Idempotency key is derived from a stable business intent, never a per-attempt random or time-derived value",
         "Dedup claim is atomic (unique constraint / INSERT-first), not a check-then-act sequence",
         "An in_progress state is handled explicitly rather than only done/not-done",
         "The same key is forwarded to the external provider where supported",
@@ -66,18 +66,19 @@
     },
     {
       "id": 3,
-      "prompt": "Add retries to our payout handler so transient provider failures don't lose payouts.",
-      "expected_output": "Retry is made safe with a stable intent-derived idempotency key, an atomic claim via unique constraint, an in_progress state, the key forwarded to the provider, and a reconciliation path for unknown outcomes",
+      "prompt": "Our payout handler already retries failed attempts. Review whether those retries can cause duplicate payouts and make them safe.",
+      "expected_output": "Identifies retries after a successful provider transfer followed by a database failure as a duplicate-payout risk, and makes retries safe with a stable intent-derived idempotency key, an atomic claim via unique constraint, an in_progress state, the key forwarded to the provider where supported, and reconciliation for unknown outcomes",
       "files": [
         "idempotency-and-exactly-once-go"
       ],
       "expectations": [
-        "Idempotency key is derived from a stable business intent, never uuid4() or a timestamp per attempt",
+        "Idempotency key is derived from a stable business intent, never a per-attempt random or time-derived value",
         "Dedup claim is atomic (unique constraint / INSERT-first), not a check-then-act sequence",
         "An in_progress state is handled explicitly rather than only done/not-done",
         "The same key is forwarded to the external provider where supported",
         "Unknown outcomes are recorded before the provider call and resolved by reconciliation",
-        "Key retention is at least as long as the longest retry chain including DLQ replay"
+        "Key retention is at least as long as the longest retry chain including DLQ replay",
+        "Identifies that payout-key insert or partner-balance update failures after a successful provider transfer cause ProcessPayout to retry IssuePayout, and prevents those retries from issuing another transfer"
       ]
     }
   ]
