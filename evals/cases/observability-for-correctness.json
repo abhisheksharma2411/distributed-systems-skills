@@ -1,0 +1,55 @@
+{
+  "skill_name": "observability-for-correctness",
+  "trigger": {
+    "positive": [
+      { "prompt": "Finance found a ledger discrepancy at month-end close that none of our monitoring caught", "top_k": 1 },
+      { "prompt": "What should we alert on for our outbox and our nightly reconciliation job?", "top_k": 3 },
+      { "prompt": "Every dashboard was green for three weeks while records were silently getting stuck", "top_k": 3 },
+      { "prompt": "We have records sitting in PENDING forever and nothing fires because PENDING is a legal state", "top_k": 3 }
+    ],
+    "negative": [
+      {
+        "prompt": "Our p99 latency went from 200ms to 2s after the last deploy, help me find the regression",
+        "owner": "observability-and-instrumentation"
+      },
+      {
+        "prompt": "How do we stop a retry from charging the customer twice?",
+        "owner": "idempotency-and-exactly-once"
+      },
+      {
+        "prompt": "Should we fail open or fail closed when the rate limiter's Redis is unreachable?",
+        "owner": "rate-limiting-and-quota-correctness"
+      }
+    ]
+  },
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Read incident.md and monitoring.py. Answer the three questions the review left open.",
+      "expected_output": "Explains that every existing signal measures liveness and speed, that the reconciliation's silence is ambiguous, and that no run history exists to date the drift from.",
+      "files": ["observability-for-correctness"],
+      "expectations": [
+        "States that worker_up, latency, throughput and error rate all stayed healthy because the process was healthy, and that none of them measures whether payouts are being completed",
+        "Identifies that reconcile_with_provider emits nothing on a clean run, so a job that found no discrepancies and a job that never ran produce identical silence",
+        "Identifies that the reconciliation queries only status = 'SENT', so the 311 stuck 'SENDING' rows were never examined — it reported clean on work it did not do",
+        "Says that no run history is recorded, so dating the drift required reconstruction, and proposes recording every run including clean ones",
+        "Proposes alarming on the age of the oldest unpublished outbox row rather than on outbox_depth, and explains that the flat depth after 13 Oct is indistinguishable from a healthy steady state by count alone",
+        "Does not propose fixing this by adding a threshold alert to payout_outbox_depth as the primary remedy"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Write the monitoring you would have wanted for this service.",
+      "expected_output": "Produces invariant queries, an age-based backlog alarm, a per-state gauge including SENDING, a job heartbeat, and a directional reconciliation result.",
+      "files": ["observability-for-correctness"],
+      "expectations": [
+        "Writes at least one invariant as a query that runs outside the application, such as every SENT payout having a balanced ledger entry pair",
+        "Alarms on the age of the oldest unresolved item, not only on a count",
+        "Adds a gauge per payout state, including SENDING, and alarms on a record older than that state's allowed duration",
+        "Adds a heartbeat on successful completion of the nightly job and alarms on the absence of a recent one, outside the job itself",
+        "Reports reconciliation as matched, missing-locally and missing-remotely separately rather than as a single discrepancy count",
+        "Notes that running an invariant query in the test suite is nearly free once the query exists"
+      ]
+    }
+  ]
+}
