@@ -9,6 +9,28 @@ Versions track the catalogue: a minor bump adds or materially reworks a skill.
 
 ### Added
 
+- **Skill: `observability-for-correctness`** ([#16]). Ordinary monitoring asks
+  whether the system is up and whether it is fast. Both questions have the same
+  shape — serving or not, and the signal is loud. A correctness defect has the
+  opposite shape: throughput normal, latency normal, error rate zero, every
+  dashboard green, and the numbers wrong. Nothing is looking, so it stays wrong
+  until a customer, an auditor or a month-end close finds it, by which point
+  the question is how far back it goes and what is owed.
+
+  The shift the skill asks for is to stop monitoring the machinery and start
+  monitoring the invariant. A consumer that is running is not evidence that
+  messages are being processed correctly; the evidence is that the thing the
+  consumer exists to keep true is still true, expressed as a query that runs
+  outside the application.
+
+  Three of its rules earn their place on their own: alarm on the **age** of the
+  oldest unresolved item rather than the count, because a flat backlog of 400
+  looks identical whether it drains in seconds or has been stuck since Tuesday;
+  make "found nothing" and "did not run" different signals, because today they
+  are the same silence; and count the states believed impossible, because a
+  counter flat at zero costs nothing and is the only thing that will say the
+  day it moves.
+
 - **Skill: `money-movement-correctness`** ([#4]). The issue calls this the
   highest-value skill on the roadmap, and it turns on a single structural
   decision: `UPDATE accounts SET balance = balance + 50` is a number with no
@@ -207,6 +229,7 @@ zero warnings.
 [#2]: https://github.com/abhisheksharma2411/distributed-systems-skills/issues/2
 [#3]: https://github.com/abhisheksharma2411/distributed-systems-skills/issues/3
 [#4]: https://github.com/abhisheksharma2411/distributed-systems-skills/issues/4
+[#16]: https://github.com/abhisheksharma2411/distributed-systems-skills/issues/16
 [#9]: https://github.com/abhisheksharma2411/distributed-systems-skills/issues/9
 [#11]: https://github.com/abhisheksharma2411/distributed-systems-skills/issues/11
 [#12]: https://github.com/abhisheksharma2411/distributed-systems-skills/issues/12

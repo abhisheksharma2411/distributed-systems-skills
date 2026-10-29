@@ -19,6 +19,7 @@ Most agent skill packs cover the development lifecycle — testing, review, refa
 | [`resilience-patterns`](skills/resilience-patterns/SKILL.md) | Timeouts, backoff, jitter, circuit breakers, bulkheads, backpressure, load shedding | ✅ Ready |
 | [`distributed-data-consistency`](skills/distributed-data-consistency/SKILL.md) | Sagas, outbox pattern, compensations, read-after-write, dual-write elimination | ✅ Ready |
 | [`money-movement-correctness`](skills/money-movement-correctness/SKILL.md) | Ledger invariants, double-entry, settlement windows, dispute handling, audit trails | ✅ Ready |
+| [`observability-for-correctness`](skills/observability-for-correctness/SKILL.md) | Invariants as queries, age-based backlog alarms, job heartbeats, per-state gauges, directional reconciliation | ✅ Ready |
 
 **Coordination and flow**
 
