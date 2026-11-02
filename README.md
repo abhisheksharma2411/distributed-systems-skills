@@ -20,6 +20,7 @@ Most agent skill packs cover the development lifecycle — testing, review, refa
 | [`distributed-data-consistency`](skills/distributed-data-consistency/SKILL.md) | Sagas, outbox pattern, compensations, read-after-write, dual-write elimination | ✅ Ready |
 | [`money-movement-correctness`](skills/money-movement-correctness/SKILL.md) | Ledger invariants, double-entry, settlement windows, dispute handling, audit trails | ✅ Ready |
 | [`multi-region-and-replication-lag`](skills/multi-region-and-replication-lag/SKILL.md) | Read classification, read-your-writes mechanisms, lag budgets, failover thresholds, write conflicts | ✅ Ready |
+| [`observability-for-correctness`](skills/observability-for-correctness/SKILL.md) | Invariants as queries, age-based backlog alarms, job heartbeats, per-state gauges, directional reconciliation | ✅ Ready |
 
 **Coordination and flow**
 
