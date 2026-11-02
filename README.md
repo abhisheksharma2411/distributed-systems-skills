@@ -37,6 +37,7 @@ Most agent skill packs cover the development lifecycle — testing, review, refa
 | [`data-migration-and-backfill`](skills/data-migration-and-backfill/SKILL.md) | Expand/migrate/contract, resumable backfills, verification before contraction | ✅ Ready |
 | [`caching-and-staleness`](skills/caching-and-staleness/SKILL.md) | Staleness budgets, invalidation, stampede protection, what must never be cached | ✅ Ready |
 | [`api-compatibility-and-versioning`](skills/api-compatibility-and-versioning/SKILL.md) | Hyrum's Law, contract evolution, deprecation windows, breaking-change detection | ✅ Ready |
+| [`feature-flags-and-rollout-safety`](skills/feature-flags-and-rollout-safety/SKILL.md) | Deciding a flag once per unit of work, kill switches above experiments, reversible ramps, fail-safe lookups | ✅ Ready |
 
 See [#16](../../issues/16) for the full roadmap, what is deliberately out of scope, and candidates still under consideration.
 

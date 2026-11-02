@@ -1,0 +1,67 @@
+{
+  "skill_name": "feature-flags-and-rollout-safety",
+  "trigger": {
+    "positive": [
+      { "prompt": "Review recovery.py — our scheduler and worker both read the same flag and the arms don't reconcile", "top_k": 1 },
+      { "prompt": "We're about to ramp a flag from 5% to 50%. What should we check first?", "top_k": 3 },
+      { "prompt": "Some invoices have retry schedules that match neither of our two algorithms", "top_k": 3 },
+      { "prompt": "Should an experiment arm be able to override an operational kill switch?", "top_k": 3 }
+    ],
+    "negative": [
+      {
+        "prompt": "How do we roll out a schema change to a 400M row table without downtime?",
+        "owner": "data-migration-and-backfill"
+      },
+      {
+        "prompt": "Our saga leaves orders half-created when step three fails",
+        "owner": "distributed-data-consistency"
+      },
+      {
+        "prompt": "What should our API deprecation window be for a breaking field change?",
+        "owner": "api-compatibility-and-versioning"
+      }
+    ]
+  },
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Review recovery.py. Is this experiment measuring what it claims to?",
+      "expected_output": "Identifies that execute_retry re-reads the flags instead of replaying the stored arm, so an invoice can be scheduled on one ladder and executed with the other, and that the kill switch is ORed rather than ANDed.",
+      "files": ["feature-flags-and-rollout-safety"],
+      "expectations": [
+        "Identifies that execute_retry does not read invoice.recovery_arm and instead re-resolves the flags, so the two halves can disagree",
+        "Explains that the gap between the two reads is hours, which is when a ramp is most likely to change the value",
+        "Identifies that use_hybrid in execute_retry is `ab_enabled or adaptive_enabled`, so every invoice takes the hybrid path once the A/B flag is on, regardless of its assigned arm",
+        "Identifies that plan_retry uses `arm == 'hybrid' or adaptive_enabled`, so the kill switch forces treatment behaviour rather than stopping it",
+        "States that the kill switch must be ANDed so that turning adaptive_retry off stops the hybrid path for every invoice including assigned ones",
+        "Recommends resolving the arm once per invoice and replaying the stored value in execute_retry"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Read experiment-readout.md alongside recovery.py. Can we ship this result?",
+      "expected_output": "Says the result cannot be shipped, explaining the planned/executed mismatch as invoices crossing arms between the two steps rather than a tagging artefact.",
+      "files": ["feature-flags-and-rollout-safety"],
+      "expectations": [
+        "States that the result is not trustworthy and should not be ramped to 100% on this evidence",
+        "Explains the ~1,550 planned/executed gap as invoices planned in one arm and executed in the other, not as a counter tagging artefact",
+        "Notes that the gap is symmetric and that the overall totals reconciling is consistent with crossover rather than evidence against it",
+        "Connects the four hours with adaptive_retry off to the code path, noting that the OR in execute_retry means that window changed behaviour for the decider arm too",
+        "Identifies the attempt histories matching neither ladder as invoices whose schedule and execution came from different algorithms, not a data quality issue",
+        "Offers a weaker explanation for the week-1 to week-3 decline than novelty decay, namely that crossover grows with each ramp step"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "is_recovery_enabled_for defaults to True when the flag service is down. Is that the right call?",
+      "expected_output": "Says the default should be the pre-existing behaviour and that failures must be counted, and distinguishes the bare except from the defaulting decision.",
+      "files": ["feature-flags-and-rollout-safety"],
+      "expectations": [
+        "States that a lookup failure should resolve to the behaviour that was already shipping rather than to True by default",
+        "Notes that a flag service outage would otherwise enable recovery for every customer at once, with no deploy and no review",
+        "Says the failure must increment a counter, because silent defaulting is indistinguishable from the flag being off",
+        "Notes that catching bare Exception also swallows programming errors, separately from the defaulting question"
+      ]
+    }
+  ]
+}
