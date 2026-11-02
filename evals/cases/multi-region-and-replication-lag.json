@@ -1,0 +1,53 @@
+{
+  "skill_name": "multi-region-and-replication-lag",
+  "trigger": {
+    "positive": [
+      { "prompt": "We moved order reads onto a read replica and now customers say the confirmation page can't find their order", "top_k": 1 },
+      { "prompt": "Write me a failover runbook for promoting our secondary region", "top_k": 3 },
+      { "prompt": "We're going active-active across two regions — how do we handle writes to the same record from both?", "top_k": 3 },
+      { "prompt": "Our consumer gets the webhook before the row exists in its local database", "top_k": 3 }
+    ],
+    "negative": [
+      {
+        "prompt": "What TTL should we use for the product price cache, and how do we stop a stampede when it expires?",
+        "owner": "caching-and-staleness"
+      },
+      {
+        "prompt": "Should this transaction use repeatable read or serializable?",
+        "owner": "distributed-data-consistency"
+      },
+      {
+        "prompt": "How do we make sure a payment retry doesn't charge the customer twice?",
+        "owner": "idempotency-and-exactly-once"
+      }
+    ]
+  },
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Review orders.py and operations.md. Why are customers reporting missing orders, and what would you change?",
+      "expected_output": "Attributes SUP-4412 to get_order reading a replica immediately after a write, and does not accept the closed-as-cannot-reproduce verdict.",
+      "files": ["multi-region-and-replication-lag"],
+      "expectations": [
+        "Identifies that get_order serves the post-checkout confirmation from a replica, making it a read-your-writes read routed to a stale copy",
+        "Distinguishes the confirmation-page read from the same function's use as a lag-tolerant read later, rather than proposing one routing rule for the whole endpoint",
+        "Proposes a mechanism that travels with the request — a write token or carried replication position — and does not stop at the convention of reading the primary after a write",
+        "Connects SUP-4455 (an order seen twice, then missing) to unpinned reads across replicas at different offsets, not to a pagination bug",
+        "Identifies that handle_order_placed treats OrderNotFound as absence when the event has outrun replication, and that OPS-291's skipped orders are unreserved stock rather than a consumer error"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Is our failover and monitoring setup safe? Change whatever isn't.",
+      "expected_output": "Rejects the automatic 5-second promotion and the averaged byte-denominated lag metric, and asks for a threshold and an approver.",
+      "files": ["multi-region-and-replication-lag"],
+      "expectations": [
+        "States that promoting on a failed health check cannot distinguish a network partition from a dead primary, and that doing it automatically risks two primaries taking writes",
+        "Requires the runbook to name a lag threshold and who may approve promoting past it, rather than leaving promotion to a judgement call during an incident",
+        "Says what happens to acknowledged writes the replica never received, and looks for a source they could be replayed from",
+        "Identifies that lag measured in bytes and averaged across the pool cannot support a promotion decision, and asks for a maximum in seconds",
+        "Connects INC-77 to replica_healthy testing only that the replica answers queries, so a stalled replica stays in the read pool while the average hides it"
+      ]
+    }
+  ]
+}

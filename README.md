@@ -19,6 +19,7 @@ Most agent skill packs cover the development lifecycle — testing, review, refa
 | [`resilience-patterns`](skills/resilience-patterns/SKILL.md) | Timeouts, backoff, jitter, circuit breakers, bulkheads, backpressure, load shedding | ✅ Ready |
 | [`distributed-data-consistency`](skills/distributed-data-consistency/SKILL.md) | Sagas, outbox pattern, compensations, read-after-write, dual-write elimination | ✅ Ready |
 | [`money-movement-correctness`](skills/money-movement-correctness/SKILL.md) | Ledger invariants, double-entry, settlement windows, dispute handling, audit trails | ✅ Ready |
+| [`multi-region-and-replication-lag`](skills/multi-region-and-replication-lag/SKILL.md) | Read classification, read-your-writes mechanisms, lag budgets, failover thresholds, write conflicts | ✅ Ready |
 
 **Coordination and flow**
 
@@ -27,13 +28,15 @@ Most agent skill packs cover the development lifecycle — testing, review, refa
 | [`distributed-locking-and-leases`](skills/distributed-locking-and-leases/SKILL.md) | Fencing tokens, lease revalidation, CAS over object storage, backend capability checks | ✅ Ready |
 | [`queue-semantics-and-replay`](skills/queue-semantics-and-replay/SKILL.md) | Delivery guarantees, ack placement, ordering, poison messages, DLQ replay safety | ✅ Ready |
 | [`rate-limiting-and-quota-correctness`](skills/rate-limiting-and-quota-correctness/SKILL.md) | Shared counters, algorithm choice, fail-open vs fail-closed, quota vs throughput | ✅ Ready |
+| [`clock-and-time-correctness`](skills/clock-and-time-correctness/SKILL.md) | Which clock a timestamp came from, skew-proof lease expiry, monotonic durations, daylight-saving arithmetic | ✅ Ready |
 
 **Change and state**
 
 | Skill | Covers | Status |
 |---|---|---|
-| `data-migration-and-backfill` | Expand/migrate/contract, resumable backfills, verification before contraction | 🚧 [#13](../../issues/13) |
+| [`data-migration-and-backfill`](skills/data-migration-and-backfill/SKILL.md) | Expand/migrate/contract, resumable backfills, verification before contraction | ✅ Ready |
 | [`caching-and-staleness`](skills/caching-and-staleness/SKILL.md) | Staleness budgets, invalidation, stampede protection, what must never be cached | ✅ Ready |
+| [`api-compatibility-and-versioning`](skills/api-compatibility-and-versioning/SKILL.md) | Hyrum's Law, contract evolution, deprecation windows, breaking-change detection | ✅ Ready |
 | [`feature-flags-and-rollout-safety`](skills/feature-flags-and-rollout-safety/SKILL.md) | Deciding a flag once per unit of work, kill switches above experiments, reversible ramps, fail-safe lookups | ✅ Ready |
 
 See [#16](../../issues/16) for the full roadmap, what is deliberately out of scope, and candidates still under consideration.
