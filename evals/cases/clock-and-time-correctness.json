@@ -1,0 +1,67 @@
+{
+  "skill_name": "clock-and-time-correctness",
+  "trigger": {
+    "positive": [
+      { "prompt": "Review payout_worker.py — two workers submitted the same payout twice and we can't reproduce it", "top_k": 1 },
+      { "prompt": "Our lease expiry compares a stored timestamp against time.time() on whichever host reads it. Is that safe?", "top_k": 3 },
+      { "prompt": "We're seeing negative values for request latency in our dashboards", "top_k": 3 },
+      { "prompt": "A nightly job ran twice in March and not at all in October. What did we get wrong?", "top_k": 3 }
+    ],
+    "negative": [
+      {
+        "prompt": "How do we stop a payment retry from charging the customer twice?",
+        "owner": "idempotency-and-exactly-once"
+      },
+      {
+        "prompt": "What TTL should we use for the product price cache?",
+        "owner": "caching-and-staleness"
+      },
+      {
+        "prompt": "Our consumer acks before processing and we lose messages on a crash",
+        "owner": "queue-semantics-and-replay"
+      }
+    ]
+  },
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Review payout_worker.py. Is the lease safe to rely on?",
+      "expected_output": "Identifies that the lease is written from the claiming worker's wall clock and compared against the reading worker's, so clock skew between hosts lets two workers hold the same payout, and that no fencing token makes the duplicate submission detectable.",
+      "files": ["clock-and-time-correctness"],
+      "expectations": [
+        "Identifies that expires_at is computed from the claiming host's time.time() and compared against a different host's clock, so the guarantee depends on the two clocks agreeing",
+        "States that the fix is to compute the timestamp in the database statement rather than to tighten NTP",
+        "Notes that FOR UPDATE SKIP LOCKED only serialises the claim, and does not make the lease comparison correct",
+        "Identifies that there is no fencing token, so a slow original holder's submission is accepted rather than rejected",
+        "Does not accept shortening LEASE_SECONDS as a fix",
+        "Notes that a lease can also expire early with no clock being wrong, for example during a long pause, so expiry alone cannot be what makes a second holder safe"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Read incident.md and payout_worker.py. The cause was never established — what was it?",
+      "expected_output": "Connects the hypervisor migration of worker-6, the negative latencies and the daylight-saving scheduler failures to a single cause: the code trusts each host's wall clock.",
+      "files": ["clock-and-time-correctness"],
+      "expectations": [
+        "Names clock skew between the two workers as the cause of the duplicate submission, rather than a claim race",
+        "Explains why the staging reproduction with 16 workers could not find it: those workers shared one clock",
+        "Attributes the negative payout.submit.seconds values to measuring a duration with the wall clock, and identifies this as the same root cause rather than a metrics pipeline fault",
+        "Attributes the October miss and the March double-run to adding 86400 seconds to a naive local datetime across a daylight-saving transition",
+        "Connects the hypervisor migration of worker-6 to a stepped or drifted clock on that host",
+        "Identifies ORDER BY created_at in latest_state as unsafe for deciding which write won, since those timestamps also come from the writing host"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Fix the duration measurement in payout_worker.py.",
+      "expected_output": "Replaces the wall-clock duration with a monotonic one and notes where monotonic time cannot be used.",
+      "files": ["clock-and-time-correctness"],
+      "expectations": [
+        "Replaces time.time() with time.monotonic() on both sides of the elapsed calculation",
+        "Explains that the wall clock can be stepped backwards between the two reads, which is what produces a negative duration",
+        "Notes that monotonic time is meaningless across processes or restarts, so it cannot replace the stored lease timestamps",
+        "Does not propose clamping the metric at zero, which would hide the defect rather than fix it"
+      ]
+    }
+  ]
+}

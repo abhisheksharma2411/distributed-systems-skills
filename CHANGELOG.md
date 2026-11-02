@@ -9,6 +9,26 @@ Versions track the catalogue: a minor bump adds or materially reworks a skill.
 
 ### Added
 
+- **Skill: `multi-region-and-replication-lag`** ([#16]). A read replica is added
+  for capacity and described as a performance change. It is neither: it adds a
+  second copy of the truth, behind the first by an amount nobody has bounded,
+  and it lets the system give a confidently wrong answer about the recent past.
+  The resulting defect is never reported as lag — it is reported as data loss,
+  by the one person who knows the record exists.
+
+  The skill refuses to treat routing as the whole problem. Reads are classified
+  into read-your-writes, monotonic and lag-tolerant *before* any of them is
+  routed, because the same endpoint is the first kind after a checkout and the
+  third from a bookmark. Read-your-writes has to be carried by the request
+  rather than upheld by convention, since a convention holds only until the
+  next code path.
+
+  Failover gets the same treatment: promoting a replica that is behind discards
+  acknowledged writes, which is a business decision with a number attached, not
+  a 3am judgement call. The runbook states the threshold, the approver, and
+  where the lost writes are recovered from — and promotion is never automatic
+  on a signal a network partition would also produce.
+
 - **Skill: `observability-for-correctness`** ([#16]). Ordinary monitoring asks
   whether the system is up and whether it is fast. Both questions have the same
   shape — serving or not, and the signal is loud. A correctness defect has the
