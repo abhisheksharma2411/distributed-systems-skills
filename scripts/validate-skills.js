@@ -34,6 +34,22 @@ const REQUIRED_SECTIONS = [
 ];
 
 const KEBAB = /^[a-z0-9]+(?:-[a-z0-9]+)+$/;
+
+// Skills outside this pack that a negative trigger may hand a prompt to.
+//
+// Owners used to be checked for shape alone, so `idempotency-and-exactly-onse`
+// was a valid owner: kebab-case, not self-referential, and pointing at nothing.
+// The routing regression that trigger exists to catch could then never fire,
+// and nothing anywhere said so. Listing the external ones explicitly turns a
+// typo back into an error while keeping the ability to name a skill we do not
+// ship.
+//
+// Both of these are skills from the general-purpose packs this one deliberately
+// does not duplicate -- see the "Deliberately out of scope" note in the roadmap.
+const EXTERNAL_OWNERS = new Set([
+  'observability-and-instrumentation',
+  'performance-optimization',
+]);
 const STRICT = process.argv.includes('--strict');
 
 const errors = [];
@@ -406,7 +422,7 @@ function checkSkill(name, existing, planned) {
   return description;
 }
 
-function checkEvalCase(name) {
+function checkEvalCase(name, skillCount, knownOwners) {
   const abs = path.join(CASES_DIR, `${name}.json`);
   const file = rel(abs);
   if (!fs.existsSync(abs)) {
@@ -430,6 +446,23 @@ function checkEvalCase(name) {
   if (positive.length < 3) {
     error(file, `at least 3 positive triggers required, found ${positive.length}`);
   }
+
+  // `top_k` is the whole assertion a positive trigger makes, and it was never
+  // checked. A value at or above the size of the pack says "rank somewhere in
+  // the list", which every skill satisfies by existing — a trigger that cannot
+  // fail, recorded as though it had been verified.
+  for (const t of positive) {
+    if (!t || typeof t.prompt !== 'string') continue;
+    if (!Number.isInteger(t.top_k) || t.top_k < 1) {
+      error(file, `positive trigger "${t.prompt}" has top_k=${JSON.stringify(t.top_k)}; it must be an integer >= 1`);
+    } else if (t.top_k >= skillCount) {
+      error(
+        file,
+        `positive trigger "${t.prompt}" has top_k=${t.top_k}, which is the whole pack ` +
+          `(${skillCount} skills). Every skill satisfies that, so the trigger asserts nothing.`
+      );
+    }
+  }
   if (negative.length < 2) {
     error(file, `at least 2 negative triggers required, found ${negative.length}`);
   }
@@ -452,6 +485,15 @@ function checkEvalCase(name) {
   for (const t of owned) {
     if (!KEBAB.test(t.owner)) {
       error(file, `negative trigger owner is not kebab-case: ${t.owner}`);
+    } else if (!knownOwners.has(t.owner)) {
+      error(
+        file,
+        `negative trigger "${t.prompt}" names \`${t.owner}\` as its owner, which is neither ` +
+          'a skill in this pack nor one of the external skills in EXTERNAL_OWNERS. A ' +
+          'misspelled owner points the routing claim at nothing and passes every other ' +
+          'check, so the regression it exists to catch can never fire. Fix the spelling, ' +
+          'or add the skill to EXTERNAL_OWNERS with a line saying where it comes from.'
+      );
     }
     if (t.owner === name) {
       error(
@@ -552,12 +594,15 @@ function main() {
   const existing = new Set(skills);
   const planned = plannedSkills();
 
+  // In-pack skills plus the external ones we deliberately route to.
+  const knownOwners = new Set([...skills, ...EXTERNAL_OWNERS]);
+
   const descriptions = {};
   const cases = {};
   for (const name of skills) {
     const description = checkSkill(name, existing, planned);
     if (description) descriptions[name] = description;
-    const data = checkEvalCase(name);
+    const data = checkEvalCase(name, skills.length, knownOwners);
     if (data) cases[name] = data;
   }
   // Cross-skill, so they run once over the collected set rather than per skill.
@@ -599,6 +644,7 @@ if (require.main === module) {
     findDescriptionCollisions,
     findTriggerConflicts,
     COLLISION_THRESHOLD,
+    EXTERNAL_OWNERS,
     fixtureOwner,
     checkOrphans,
   };

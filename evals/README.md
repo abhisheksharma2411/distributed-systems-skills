@@ -32,15 +32,26 @@ Each skill ships an eval case defining what should trigger it, what should *not*
 Enforced by `scripts/validate-skills.js`, which CI runs on every pull request.
 
 - ≥ 3 positive triggers
-- ≥ 2 negative triggers **naming an `owner`** — kebab-case, and never this skill
+- Every positive trigger's `top_k` an integer ≥ 1 and **smaller than the pack**.
+  A `top_k` spanning every skill is satisfied by ranking anywhere at all, so it
+  records a routing result that was never actually asserted.
+- ≥ 2 negative triggers **naming an `owner`** — kebab-case, never this skill,
+  and naming a skill that exists: one in this pack, or one listed in
+  `EXTERNAL_OWNERS` in the validator. A misspelled owner is kebab-case and
+  not self-referential, so it passed every other check while pointing the
+  claim at nothing.
 - ≥ 1 behavioral eval with a populated `expectations[]`
 - Every execution eval backed by real files under `evals/fixtures/<skill-name>/`
 
-An `owner` may name a skill outside this pack (`observability-and-instrumentation`
-is one we use), so it is checked for shape rather than existence. Without one, a
-negative trigger records that this skill lost a prompt but not who should have
-won it — and that second half is what turns an over-broad description into a
-visible regression rather than a vague complaint.
+Without an owner, a negative trigger records that this skill lost a prompt but
+not who should have won it — and that second half is what turns an over-broad
+description into a visible regression rather than a vague complaint.
+
+An owner may name a skill outside this pack: `observability-and-instrumentation`
+and `performance-optimization` are the two we use, both from the general-purpose
+packs this one deliberately does not duplicate. They are listed in
+`EXTERNAL_OWNERS` in the validator, so naming one stays possible while a typo
+does not.
 
 ## Routing collisions
 
