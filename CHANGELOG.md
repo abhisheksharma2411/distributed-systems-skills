@@ -9,6 +9,25 @@ Versions track the catalogue: a minor bump adds or materially reworks a skill.
 
 ### Added
 
+- **Two routing claims the validator now checks.** Both were assertions a case
+  file made about where a prompt routes, and neither was verified; each passed
+  every existing check while recording a result nothing had tested.
+
+  `top_k` was never validated at all. A value at or above the size of the pack
+  is satisfied by ranking anywhere in the list, which every skill does by
+  existing — a trigger that cannot fail, filed as though it had been. It must
+  now be an integer of at least 1 and smaller than the pack.
+
+  A negative trigger's `owner` was checked for kebab-case and
+  non-self-reference, but not for naming anything real, so
+  `idempotency-and-exactly-onse` was a valid owner pointing at nothing: the
+  routing regression that trigger exists to catch could never fire. Owners must
+  now name a skill in this pack or one listed in `EXTERNAL_OWNERS`, which holds
+  the two general-purpose skills this pack deliberately routes away to.
+
+  Both were verified by breaking them: dropping either check leaves tests
+  failing, and the current corpus passes both unchanged.
+
 - **Skill: `multi-region-and-replication-lag`** ([#16]). A read replica is added
   for capacity and described as a performance change. It is neither: it adds a
   second copy of the truth, behind the first by an amount nobody has bounded,

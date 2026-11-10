@@ -30,6 +30,7 @@ const {
   COLLISION_THRESHOLD,
   fixtureOwner,
   checkOrphans,
+  EXTERNAL_OWNERS,
 } = require('./validate-skills.js');
 
 // Built rather than written literally so this file does not contain fences that
@@ -539,3 +540,83 @@ test('the orphan check is actually wired to fixtureOwner', () => {
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+// -- routing: the two claims that used to pass unchecked ---------------------
+
+// Both of these are assertions a case file makes about routing, and neither was
+// verified. They are tested through the validator's own output rather than a
+// helper, because what broke in both cases was that nothing called anything.
+
+test('a top_k spanning the whole pack is rejected as asserting nothing', () => {
+  const run = runValidatorOn((c) => {
+    c.trigger.positive[0].top_k = 99;
+  });
+  assert.match(run, /asserts nothing/);
+});
+
+test('a top_k below 1 is rejected', () => {
+  for (const bad of [0, -1, 1.5, '3', null, undefined]) {
+    const run = runValidatorOn((c) => {
+      c.trigger.positive[0].top_k = bad;
+    });
+    assert.match(run, /must be an integer >= 1/, `top_k=${JSON.stringify(bad)} should be rejected`);
+  }
+});
+
+test('a valid top_k is left alone', () => {
+  const run = runValidatorOn((c) => {
+    c.trigger.positive[0].top_k = 1;
+  });
+  assert.doesNotMatch(run, /top_k/);
+});
+
+test('an owner naming no real skill is rejected', () => {
+  // The spelling is one letter out. Every other check passes it: kebab-case,
+  // not this skill, well-formed.
+  const run = runValidatorOn((c) => {
+    c.trigger.negative[0].owner = 'idempotency-and-exactly-onse';
+  });
+  assert.match(run, /neither a skill in this pack nor one of the external skills/);
+});
+
+test('an owner outside the pack is allowed when it is on the allowlist', () => {
+  assert.ok(EXTERNAL_OWNERS.size > 0, 'the allowlist exists to be used');
+  for (const owner of EXTERNAL_OWNERS) {
+    const run = runValidatorOn((c) => {
+      c.trigger.negative[0].owner = owner;
+    });
+    assert.doesNotMatch(run, /neither a skill in this pack/, `${owner} should be accepted`);
+  }
+});
+
+test('an in-pack owner is allowed', () => {
+  const run = runValidatorOn((c) => {
+    c.trigger.negative[0].owner = 'resilience-patterns';
+  });
+  assert.doesNotMatch(run, /neither a skill in this pack/);
+});
+
+// Runs the real validator over the real repository with one case file edited,
+// then puts it back. Driving the whole binary is the point: these two checks
+// are about wiring, and a unit test of a helper would have passed throughout.
+function runValidatorOn(mutate) {
+  const { execFileSync } = require('node:child_process');
+  const casePath = path.join(__dirname, '..', 'evals', 'cases', 'caching-and-staleness.json');
+  const original = fs.readFileSync(casePath, 'utf8');
+  try {
+    const data = JSON.parse(original);
+    mutate(data);
+    fs.writeFileSync(casePath, JSON.stringify(data, null, 2) + '\n');
+    try {
+      return execFileSync('node', [path.join(__dirname, 'validate-skills.js')], {
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+    } catch (err) {
+      // a non-zero exit is the expected path for the rejection tests
+      return `${err.stdout || ''}${err.stderr || ''}`;
+    }
+  } finally {
+    fs.writeFileSync(casePath, original);
+  }
+}
