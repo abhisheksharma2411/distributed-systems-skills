@@ -20,6 +20,8 @@ const {
   stripFencedCode,
   parseFrontmatter,
   plannedSkills,
+  rosterEntries,
+  checkRoster,
   isThirdPerson,
   plannedCrossReferences,
   descriptionTokens,
@@ -620,3 +622,121 @@ function runValidatorOn(mutate) {
     fs.writeFileSync(casePath, original);
   }
 }
+
+// -- roster integrity -------------------------------------------------------
+//
+// The roster is load-bearing: `plannedSkills` reads it to decide which names
+// are skills-not-yet-written, which is what makes a cross-reference to one an
+// error. A skill with no row is therefore a gap in the catalogue and in the
+// check that polices it.
+
+/** Parse a roster from a README written to a temp file. */
+const entriesOf = (readme) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dss-roster-'));
+  try {
+    const file = path.join(dir, 'README.md');
+    fs.writeFileSync(file, readme.join('\n'));
+    return rosterEntries(file);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+};
+
+const ROSTER_HEAD = ['## Skills', '', '| Skill | Covers | Status |', '| --- | --- | --- |'];
+
+test('a roster row carries the skill it links to', () => {
+  assert.deepEqual(
+    entriesOf([...ROSTER_HEAD, '| [`alpha-one`](skills/alpha-one/SKILL.md) | x | Ready |']),
+    [{ name: 'alpha-one', target: 'alpha-one' }]
+  );
+});
+
+test('a roster row with no link is a planned skill, not a broken one', () => {
+  assert.deepEqual(entriesOf([...ROSTER_HEAD, '| `beta-two` | x | Planned |']), [
+    { name: 'beta-two', target: null },
+  ]);
+  assert.deepEqual(checkRoster([], entriesOf([...ROSTER_HEAD, '| `beta-two` | x | Planned |'])), []);
+});
+
+test('a skill with no roster row is reported', () => {
+  const entries = entriesOf([...ROSTER_HEAD, '| [`alpha-one`](skills/alpha-one/SKILL.md) | x | Ready |']);
+  const found = checkRoster(['alpha-one', 'gamma-three'], entries);
+  assert.equal(found.length, 1);
+  assert.match(found[0], /gamma-three/);
+  assert.doesNotMatch(found[0], /alpha-one/);
+});
+
+test('a complete roster reports nothing', () => {
+  const entries = entriesOf([
+    ...ROSTER_HEAD,
+    '| [`alpha-one`](skills/alpha-one/SKILL.md) | x | Ready |',
+    '| [`gamma-three`](skills/gamma-three/SKILL.md) | x | Ready |',
+  ]);
+  assert.deepEqual(checkRoster(['alpha-one', 'gamma-three'], entries), []);
+});
+
+test('a row that links to a different skill is reported', () => {
+  // The copy-paste `check-links.js` cannot see: both paths exist, both resolve,
+  // and the reader is sent to the wrong skill.
+  const entries = entriesOf([
+    ...ROSTER_HEAD,
+    '| [`alpha-one`](skills/gamma-three/SKILL.md) | x | Ready |',
+    '| [`gamma-three`](skills/gamma-three/SKILL.md) | x | Ready |',
+  ]);
+  const found = checkRoster(['alpha-one', 'gamma-three'], entries);
+  assert.equal(found.length, 1);
+  assert.match(found[0], /alpha-one.*gamma-three/);
+});
+
+test('the roster only covers the Skills section', () => {
+  // A table under a later `## ` heading is not the roster, and a skill named
+  // there must not count as listed.
+  const entries = entriesOf([
+    ...ROSTER_HEAD,
+    '| [`alpha-one`](skills/alpha-one/SKILL.md) | x | Ready |',
+    '',
+    '## References',
+    '',
+    '| Reference | From |',
+    '| --- | --- |',
+    '| [checklist](references/c.md) | [`gamma-three`](skills/gamma-three/SKILL.md) |',
+  ]);
+  assert.deepEqual(entries, [{ name: 'alpha-one', target: 'alpha-one' }]);
+  assert.equal(checkRoster(['alpha-one', 'gamma-three'], entries).length, 1);
+});
+
+test('subsections of Skills are still the roster', () => {
+  // The real README groups the roster into `### ` subsections, so a `###` must
+  // not end it the way a `##` does.
+  const entries = entriesOf([
+    ...ROSTER_HEAD,
+    '| [`alpha-one`](skills/alpha-one/SKILL.md) | x | Ready |',
+    '',
+    '### Coordination',
+    '',
+    '| Skill | Covers | Status |',
+    '| --- | --- | --- |',
+    '| [`gamma-three`](skills/gamma-three/SKILL.md) | x | Ready |',
+  ]);
+  assert.deepEqual(entries.map((e) => e.name), ['alpha-one', 'gamma-three']);
+});
+
+test('plannedSkills and the roster cannot disagree about what is listed', () => {
+  // They share a parser so that this stays true; asserted rather than assumed,
+  // because the bug this prevents is silent on both sides.
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dss-roster-'));
+  try {
+    const file = path.join(dir, 'README.md');
+    fs.writeFileSync(
+      file,
+      [...ROSTER_HEAD, '| [`alpha-one`](skills/alpha-one/SKILL.md) | x | Ready |', '| `beta-two` | x | Planned |'].join('\n')
+    );
+    assert.deepEqual([...plannedSkills(file)].sort(), ['alpha-one', 'beta-two']);
+    assert.deepEqual(
+      rosterEntries(file).map((e) => e.name).sort(),
+      ['alpha-one', 'beta-two']
+    );
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
