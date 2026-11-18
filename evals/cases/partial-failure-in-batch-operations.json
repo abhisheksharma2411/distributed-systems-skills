@@ -1,0 +1,50 @@
+{
+  "skill_name": "partial-failure-in-batch-operations",
+  "trigger": {
+    "positive": [
+      {"prompt": "Our batch_write_item returns 200 but some rows are never in the table", "top_k": 3},
+      {"prompt": "Write a Lambda that consumes SQS in batches of 10 and writes to DynamoDB", "top_k": 3},
+      {"prompt": "Should this handler return batchItemFailures, and what happens if one item fails?", "top_k": 3},
+      {"prompt": "We retry the bulk call on failure and now work is being applied twice", "top_k": 3},
+      {"prompt": "What do we do with UnprocessedItems coming back from a bulk write?", "top_k": 3}
+    ],
+    "negative": [
+      {"prompt": "Customers are reporting they got charged twice for one order", "owner": "idempotency-and-exactly-once"},
+      {"prompt": "Where should we ack a Kafka message — before or after the side effect?", "owner": "queue-semantics-and-replay"},
+      {"prompt": "Add retries with exponential backoff and jitter to this HTTP client", "owner": "resilience-patterns"},
+      {"prompt": "Backfill this column across 40 million rows without locking the table", "owner": "data-migration-and-backfill"}
+    ]
+  },
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Review this consumer against the platform notes. Three things are open: about 2% of SKUs drift from the physical count every month, the function ran to its timeout during the March spike, and SKUs that were correct before the DLQ redrive were wrong after it. Explain each.",
+      "expected_output": "Maps the drift to UnprocessedItems never being read, the timeout to unbounded exponential backoff retrying the whole batch, and the post-redrive errors to an idempotency key derived from the invocation id; identifies the missing batchItemFailures return and the per-batch metric",
+      "files": ["partial-failure-in-batch-operations"],
+      "expectations": [
+        "Identifies that `write_all` returns as soon as the HTTP status is 200 and never reads `UnprocessedItems`, so throttled writes are silently discarded — the monthly drift",
+        "States that `batch_write_item` returns 200 for a partial write by design, so the status check is not an error signal for this call",
+        "Connects the March timeout to `time.sleep(2 ** attempt)` with `MAX_ATTEMPTS = 25`, which reaches absurd sleeps well inside the 15-minute function timeout",
+        "Notes that the retry resends the whole `batch` rather than the remainder, so items that already landed are rewritten",
+        "Identifies `adjustment_key` as being built from `context.aws_request_id`, which is the invocation and not the adjustment, and explains that it is a different key on every delivery so it deduplicates nothing",
+        "Connects the post-redrive wrong SKUs to that key: a redriven message arrives under a new invocation id, `already_applied` is false, and the adjustment is applied a second time",
+        "Points out that one key guards ten SKUs, so `mark_applied` claims the whole batch succeeded even when some items did not",
+        "Identifies that the handler returns nothing, so there is no `batchItemFailures`, and that the event source mapping in `platform.tf` has no `function_response_types`, so the return value would be ignored even if it were there",
+        "Notes that `inventory.sync.batches_ok` is incremented once per invocation, which is why a dashboard reads 99.98% while 2% of items are lost",
+        "Requires a test that fails when the `UnprocessedItems` read is removed, rather than only recommending that it be read"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Our SQS handler already returns batchItemFailures for any message whose processing raised, and every message has an idempotency key. One message keeps coming back and being reported, forever, but the logs show its body never runs. Why?",
+      "expected_output": "Explains that reporting without releasing the key means the redelivery finds a held or terminal record and skips the body, so the message looks retried and is not",
+      "expectations": [
+        "Identifies that the key is being held or burned on failure rather than released",
+        "Explains that the redelivery then finds a record for that key, skips the body, and is reported again — a loop that looks like a working retry",
+        "States that reporting and releasing are two halves of the same decision and that either alone is a defect, naming the opposite failure (releasing without reporting deletes a message whose effect never happened)",
+        "Routes the key mechanism itself to `idempotency-and-exactly-once` rather than restating how claims work",
+        "Asks for a test that redelivers the reported item alone and asserts the body executes"
+      ]
+    }
+  ]
+}
