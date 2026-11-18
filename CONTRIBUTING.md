@@ -26,6 +26,7 @@ Every skill in this pack meets four conditions. A proposal that misses any of th
 3. Follow the section anatomy: Overview, When to Use (including an explicit **NOT for** list that hands off to other skills), Process, Common Rationalizations, Red Flags, Verification.
 4. Add an eval case at `evals/cases/<skill-name>.json` with at least 3 positive triggers, 2 negative triggers (routed to the skill that should own them), and 1 behavioral eval with an `expectations[]` array.
 5. Back any execution eval with real files under `evals/fixtures/<skill-name>/`. A fixture should contain the actual defect the skill exists to catch, not a toy.
+6. Add a row to the roster table in [README.md](README.md), linking to your own `SKILL.md`. This is not only documentation: the validator reads that table to decide which names are skills that have been planned but not written, which is what makes a cross-reference to one an error. A skill with no row is a gap in the catalogue and in the check that polices it.
 
 The format is deliberately compatible with [`addyosmani/agent-skills`](https://github.com/addyosmani/agent-skills), so a skill here can be submitted upstream without restructuring.
 
@@ -37,7 +38,7 @@ Before opening a pull request, run the validator:
 node scripts/validate-skills.js
 ```
 
-It needs nothing beyond Node itself and checks the frontmatter, the section anatomy, the eval-case minimums above, that every `files[]` entry resolves to a real fixture directory, and that every `` `skill-name` `` cross-reference in a SKILL.md resolves to a skill that exists. It exits non-zero on any error; warnings are reported but do not fail the run unless you pass `--strict`.
+It needs nothing beyond Node itself and checks the frontmatter, the section anatomy, the eval-case minimums above, that every `files[]` entry resolves to a real fixture directory, that every `` `skill-name` `` cross-reference in a SKILL.md resolves to a skill that exists, and that the README roster lists every skill and that each row links to the skill it names. It exits non-zero on any error; warnings are reported but do not fail the run unless you pass `--strict`.
 
 ## Cross-references
 

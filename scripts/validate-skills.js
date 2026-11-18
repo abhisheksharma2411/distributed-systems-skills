@@ -84,9 +84,19 @@ function listSkillDirs() {
 // the link text — a README bending around a validator heuristic.
 // `readmePath` is a parameter only so the roster scoping can be exercised
 // against a fixture README; every production caller uses the default.
-function plannedSkills(readmePath = README) {
-  const planned = new Set();
-  if (!fs.existsSync(readmePath)) return planned;
+/**
+ * The roster rows in README's `## Skills` section, in document order.
+ *
+ * Each entry is the backticked skill name in the first cell and the skill that
+ * cell's link points at, or null when the row carries no link — which is how a
+ * roster row for a skill nobody has written yet looks.
+ *
+ * `plannedSkills` and `checkRoster` both read the roster, and both go through
+ * here so the two cannot come to different conclusions about what is on it.
+ */
+function rosterEntries(readmePath = README) {
+  const entries = [];
+  if (!fs.existsSync(readmePath)) return entries;
   let inRoster = false;
   for (const line of fs.readFileSync(readmePath, 'utf8').split('\n')) {
     const heading = line.match(/^## (.+)$/);
@@ -99,9 +109,54 @@ function plannedSkills(readmePath = README) {
     const firstCell = line.split('|')[1];
     if (firstCell === undefined) continue;
     const m = firstCell.match(/`([a-z0-9-]+)`/);
-    if (m && KEBAB.test(m[1])) planned.add(m[1]);
+    if (!m || !KEBAB.test(m[1])) continue;
+    const link = firstCell.match(/\]\(skills\/([a-z0-9-]+)\/SKILL\.md\)/);
+    entries.push({ name: m[1], target: link ? link[1] : null });
   }
-  return planned;
+  return entries;
+}
+
+function plannedSkills(readmePath = README) {
+  return new Set(rosterEntries(readmePath).map((e) => e.name));
+}
+
+/**
+ * The roster lists every skill that exists, and each row links to itself.
+ *
+ * Two findings, and the first is the one with teeth beyond documentation. The
+ * roster is not only the pack's shop window — `plannedSkills` reads it to
+ * decide which names are skills-not-yet-written, which is what makes a
+ * cross-reference to one an error. The table is load-bearing for a rule, so a
+ * skill that never gets a row is a gap in the catalogue *and* in the thing that
+ * polices the catalogue.
+ *
+ * The second finding is a copy-paste that nothing else can see: a row naming
+ * one skill while linking to another. `check-links.js` passes, because both
+ * paths exist and both resolve; only a check that compares the name against
+ * the target notices that the reader is sent somewhere else.
+ *
+ * A row with no link is left alone: that is a planned skill, which the roster
+ * is meant to carry.
+ */
+function checkRoster(skills, entries) {
+  const found = [];
+  const listed = new Set(entries.map((e) => e.name));
+  for (const skill of skills) {
+    if (!listed.has(skill)) {
+      found.push(
+        `skill \`${skill}\` exists under skills/ but has no row in the README roster — ` +
+          'CONTRIBUTING: add it to the table in ## Skills'
+      );
+    }
+  }
+  for (const e of entries) {
+    if (e.target !== null && e.target !== e.name) {
+      found.push(
+        `roster row \`${e.name}\` links to skills/${e.target}/SKILL.md, which is a different skill`
+      );
+    }
+  }
+  return found;
 }
 
 // Hyphens allowed: "Cross-checks" is third person too, and rejecting it pushed
@@ -613,6 +668,9 @@ function main() {
     error(rel(path.join(CASES_DIR, f.skill + '.json')), f.message);
   }
   checkOrphans(skills);
+  for (const message of checkRoster(skills, rosterEntries())) {
+    error(rel(README), message);
+  }
 
   for (const e of errors) console.error(`ERROR ${e}`);
   for (const w of warnings) console.error(`WARN  ${w}`);
@@ -636,6 +694,8 @@ if (require.main === module) {
     stripFencedCode,
     parseFrontmatter,
     plannedSkills,
+    rosterEntries,
+    checkRoster,
     isThirdPerson,
     plannedCrossReferences,
     descriptionTokens,
